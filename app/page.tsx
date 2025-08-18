@@ -1,70 +1,108 @@
 'use client'
 
-import { useCallback, useState, useEffect } from "react"
-import ClickCount from '../components/ClickCount'
-import styles from '../styles/home.module.css'
-import Image from "next/image"
-import { getAssetPath } from '../lib/utils'
+import { useState, useEffect, useRef } from 'react';
+import { getAssetPath } from '../lib/utils';
 
 export default () => {
-  const png = getAssetPath('/cat.png')
-  const jpg = getAssetPath('/cat.jpg')
+  const [victimPosition, setVictimPosition] = useState({ x: 0, y: 0 });
+  const [hasWon, setHasWon] = useState(false);
+  const [isAudioReady, setIsAudioReady] = useState(false);
+  const audioContextRef = useRef(null);
+  const audioBufferRef = useRef(null);
+  const winThreshold = 50; // 50 pixels
 
-  const [count, setCount] = useState(0)
-  const increment = useCallback(() => {
-    setCount((v) => v + 1)
-  }, [setCount])
+  const resetGame = () => {
+    const newX = Math.random() * window.innerWidth;
+    const newY = Math.random() * window.innerHeight;
+    setVictimPosition({ x: newX, y: newY });
+    setHasWon(false);
+  };
 
   useEffect(() => {
-    const r = setInterval(() => {
-      increment()
-    }, 1000)
+    resetGame();
+  }, []);
 
-    return () => {
-      clearInterval(r)
+  const initAudio = async () => {
+    if (isAudioReady) return;
+
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContextRef.current = audioContext;
+
+    const audioPath = getAssetPath('/audio/victim.mp3');
+    const response = await fetch(audioPath);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    audioBufferRef.current = audioBuffer;
+    setIsAudioReady(true);
+  };
+
+  const handleTap = async (event) => {
+    console.log('Tap registered');
+    if (hasWon) return;
+
+    if (!isAudioReady) {
+      await initAudio();
     }
-  }, [increment])
+    
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    const tapX = event.clientX;
+    const tapY = event.clientY;
+
+    const distance = Math.sqrt(
+      Math.pow(tapX - victimPosition.x, 2) +
+      Math.pow(tapY - victimPosition.y, 2)
+    );
+
+    if (distance < winThreshold) {
+      setHasWon(true);
+      return;
+    }
+
+    const pan = (tapX - victimPosition.x) / (window.innerWidth / 2);
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = audioBufferRef.current;
+
+    const panner = audioContextRef.current.createStereoPanner();
+    panner.pan.value = pan;
+
+    const gainNode = audioContextRef.current.createGain();
+    const maxDistance = Math.sqrt(Math.pow(window.innerWidth, 2) + Math.pow(window.innerHeight, 2));
+    gainNode.gain.value = 1 - (distance / maxDistance);
+
+    source.connect(panner).connect(gainNode).connect(audioContextRef.current.destination);
+    source.start(0);
+  };
 
   return (
-    <main className={styles.main}>
-      <h1>Fast Refresh Demo</h1>
-      <p>
-        Fast Refresh is a Next.js feature that gives you instantaneous feedback
-        on edits made to your React components, without ever losing component
-        state.
-      </p>
-      <hr className={styles.hr} />
-      <Image
-        height={50}
-        width={50}
-        src={png}
-        alt="cat png"
-      />
-      <Image
-        height={50}
-        width={50}
-        alt="cat jpg"
-        src={jpg}
-      />
-      <div style={{
-        width: 50,
-        height: 50,
-        backgroundSize: 'cover',
-        backgroundImage: `url(${getAssetPath('/cat.png')})`
-      }} />
-      <div>
-        <p>
-          Auto incrementing value. The counter won't reset after edits or if
-          there are errors.
-        </p>
-        <p>Current value: {count}</p>
-      </div>
-      <hr className={styles.hr} />
-      <div>
-        <p>Component with state.</p>
-        <ClickCount />
-      </div>
-      <hr className={styles.hr} />
+    <main onClick={handleTap} style={{ position: 'relative', cursor: 'pointer' }}>
+      {!isAudioReady && <div style={{ color: 'white', textAlign: 'center', paddingTop: '50vh' }}>Click to start</div>}
+      {hasWon && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          textAlign: 'center',
+          color: 'white'
+        }}>
+          <h1>You found the victim!</h1>
+          <button onClick={(e) => {
+            e.stopPropagation();
+            resetGame();
+          }} style={{
+            marginTop: '20px',
+            padding: '10px 20px',
+            fontSize: '16px',
+            cursor: 'pointer'
+          }}>
+            Play Again
+          </button>
+        </div>
+      )}
     </main>
   );
 }
