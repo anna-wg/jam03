@@ -38,7 +38,6 @@ export default () => {
   };
 
   const handleTap = async (event) => {
-    console.log('Tap registered');
     if (hasWon) return;
 
     if (!isAudioReady) {
@@ -49,8 +48,14 @@ export default () => {
       await audioContextRef.current.resume();
     }
 
-    const tapX = event.clientX;
-    const tapY = event.clientY;
+    let tapX, tapY;
+    if (event.touches) {
+      tapX = event.touches.clientX;
+      tapY = event.touches.clientY;
+    } else {
+      tapX = event.clientX;
+      tapY = event.clientY;
+    }
 
     const distance = Math.sqrt(
       Math.pow(tapX - victimPosition.x, 2) +
@@ -78,7 +83,7 @@ export default () => {
   };
 
   return (
-    <main onClick={handleTap} style={{ position: 'relative', cursor: 'pointer' }}>
+    <main onClick={handleTap} onTouchStart={handleTap} style={{ position: 'relative', cursor: 'pointer', height: '100vh', width: '100vw' }}>
       {!isAudioReady && <div style={{ color: 'white', textAlign: 'center', paddingTop: '50vh' }}>Click to start</div>}
       {hasWon && (
         <div style={{
