@@ -36,6 +36,7 @@ export default function BlindDispatch() {
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -344,108 +345,129 @@ export default function BlindDispatch() {
         touchAction: 'none'
       }}
     >
-      {/* Top bar with score and timer */}
-      {gameStarted && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          padding: '20px',
-          fontSize: '2rem',
-          fontWeight: 'bold'
-        }}>
-          <div>Score: {score}</div>
-          <div>{formatTime(timeLeft)}</div>
-        </div>
-      )}
-
-      {/* Main content area */}
-      <div style={{
-        flex: 1,
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        textAlign: 'center'
-      }}>
-        {!gameStarted ? (
-          <div>
-            <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Dispatch</h1>
-            <p style={{ fontSize: '1.5rem' }}>Tap anywhere to start your shift</p>
-          </div>
-        ) : timeLeft === 0 ? (
-          <div>
-            <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Shift Over</h1>
-            <p style={{ fontSize: '2rem', marginBottom: '1rem' }}>Final Score: {score}</p>
-            <p style={{ fontSize: '1.5rem' }}>Refresh to play again</p>
-          </div>
-        ) : (
-          <div>
-            <p style={{ fontSize: '1.5rem', opacity: 0.7 }}>{getStateDescription()}</p>
-            {gameState === 1 && (
-              <div style={{ marginTop: '2rem', fontSize: '1rem', opacity: 0.5 }}>
-                <p>Police (Top Left) | Fire (Top Right)</p>
-                <p>Ambulance (Bottom Left) | Reject (Bottom Right)</p>
-              </div>
-            )}
-            {gameState === 2 && (
-              <div style={{ marginTop: '2rem', fontSize: '1rem', opacity: 0.5 }}>
-                <p>Swipe: ↑ North | ↓ South | ← West | → East</p>
-                <p style={{ fontSize: '0.8rem', marginTop: '1rem' }}>
-                  (Or use arrow keys for testing)
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Quadrant overlay for visual feedback during development */}
-      {gameStarted && gameState === 1 && (
-        <div style={{
+      <button
+        onClick={() => setDebugMode(prev => !prev)}
+        style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          opacity: 0.1
-        }}>
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          padding: '10px',
+          backgroundColor: 'rgba(255, 255, 255, 0.2)',
+          border: '1px solid white',
+          color: 'white',
+          cursor: 'pointer'
+        }}
+      >
+        Toggle UI
+      </button>
+      {!debugMode && (
+        <>
+          {/* Top bar with score and timer */}
+          {gameStarted && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '20px',
+              fontSize: '2rem',
+              fontWeight: 'bold'
+            }}>
+              <div>Score: {score}</div>
+              <div>{formatTime(timeLeft)}</div>
+            </div>
+          )}
+
+          {/* Main content area */}
           <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '50%',
-            height: '50%',
-            backgroundColor: 'blue',
-            border: '1px solid white'
-          }} />
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            width: '50%',
-            height: '50%',
-            backgroundColor: 'red',
-            border: '1px solid white'
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            width: '50%',
-            height: '50%',
-            backgroundColor: 'white',
-            border: '1px solid white'
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            right: 0,
-            width: '50%',
-            height: '50%',
-            backgroundColor: 'gray',
-            border: '1px solid white'
-          }} />
-        </div>
+            flex: 1,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            textAlign: 'center'
+          }}>
+            {!gameStarted ? (
+              <div>
+                <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Dispatch</h1>
+                <p style={{ fontSize: '1.5rem' }}>Tap anywhere to start your shift</p>
+              </div>
+            ) : timeLeft === 0 ? (
+              <div>
+                <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Shift Over</h1>
+                <p style={{ fontSize: '2rem', marginBottom: '1rem' }}>Final Score: {score}</p>
+                <p style={{ fontSize: '1.5rem' }}>Refresh to play again</p>
+              </div>
+            ) : (
+              <div>
+                <p style={{ fontSize: '1.5rem', opacity: 0.7 }}>{getStateDescription()}</p>
+                {gameState === 1 && (
+                  <div style={{ marginTop: '2rem', fontSize: '1rem', opacity: 0.5 }}>
+                    <p>Police (Top Left) | Fire (Top Right)</p>
+                    <p>Ambulance (Bottom Left) | Reject (Bottom Right)</p>
+                  </div>
+                )}
+                {gameState === 2 && (
+                  <div style={{ marginTop: '2rem', fontSize: '1rem', opacity: 0.5 }}>
+                    <p>Swipe: ↑ North | ↓ South | ← West | → East</p>
+                    <p style={{ fontSize: '0.8rem', marginTop: '1rem' }}>
+                      (Or use arrow keys for testing)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Quadrant overlay for visual feedback during development */}
+          {gameStarted && gameState === 1 && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              opacity: 0.1
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '50%',
+                height: '50%',
+                backgroundColor: 'blue',
+                border: '1px solid white'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '50%',
+                height: '50%',
+                backgroundColor: 'red',
+                border: '1px solid white'
+              }} />
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                width: '50%',
+                height: '50%',
+                backgroundColor: 'white',
+                border: '1px solid white'
+              }} />
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: '50%',
+                height: '50%',
+                backgroundColor: 'gray',
+                border: '1px solid white'
+              }} />
+            </div>
+          )}
+        </>
       )}
     </main>
   );
