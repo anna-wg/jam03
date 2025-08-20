@@ -1,0 +1,2083 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.devcontainer/
+  devcontainer.json
+  icon.svg
+.github/
+  workflows/
+    ghp-release-test.yaml
+.kilocode/
+  rules/
+    image-asset-paths.md
+    repo-name-import.md
+  rules.md
+app/
+  globals.css
+  index.js
+  layout.tsx
+  page.tsx
+components/
+  Button.js
+  Button.module.css
+  ClickCount.js
+docs/
+  asset-management.md
+  faq.md
+  getting-started.md
+  github-pages-deployment.md
+  index.md
+  overview.md
+  project-structure.md
+lib/
+  prisma.ts
+  repoName.js
+  utils.ts
+prisma/
+  schema.prisma
+styles/
+  home.module.css
+.gitignore
+global.css
+next.config.dev.js
+next.config.js
+next.config.prod.js
+package.json
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".devcontainer/devcontainer.json">
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:latest",
+  "hostRequirements": {
+    "cpus": 4
+  },
+  "waitFor": "onCreateCommand",
+  "updateContentCommand": "npm install --legacy-peer-deps",
+  "postCreateCommand": "rm -rf node_modules && npm install --legacy-peer-deps && npm cache clean --force",
+  "postAttachCommand": {
+    "server": "npm run dev"
+  },
+  "customizations": {
+    "codespaces": {
+      "openFiles": [
+        "src/App.jsx"
+      ]
+    },
+    "vscode": {
+      "extensions": [
+        // "dbaeumer.vscode-eslint",
+        // "esbenp.prettier-vscode",
+        // "ms-vscode.js-debug",
+        // "msjsdiag.debugger-for-chrome",
+        "kilocode.kilo-code"
+      ]
+    }
+  },
+  "portsAttributes": {
+    "3000": {
+      "label": "Application",
+      "onAutoForward": "openPreview"
+    }
+  },
+  "forwardPorts": [3000]
+}
+</file>
+
+<file path=".devcontainer/icon.svg">
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<mask id="mask0_408_134" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="180" height="180">
+<circle cx="90" cy="90" r="90" fill="black"/>
+</mask>
+<g mask="url(#mask0_408_134)">
+<circle cx="90" cy="90" r="90" fill="black"/>
+<path d="M149.508 157.52L69.142 54H54V125.97H66.1136V69.3836L139.999 164.845C143.333 162.614 146.509 160.165 149.508 157.52Z" fill="url(#paint0_linear_408_134)"/>
+<rect x="115" y="54" width="12" height="72" fill="url(#paint1_linear_408_134)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_408_134" x1="109" y1="116.5" x2="144.5" y2="160.5" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="1" stop-color="white" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="paint1_linear_408_134" x1="121" y1="54" x2="120.799" y2="106.875" gradientUnits="userSpaceOnUse">
+<stop stop-color="white"/>
+<stop offset="1" stop-color="white" stop-opacity="0"/>
+</linearGradient>
+</defs>
+</svg>
+</file>
+
+<file path=".github/workflows/ghp-release-test.yaml">
+name: Create • Build • Deploy Version Branch → GH Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the branch that triggered the workflow
+      - name: Checkout current branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # 2. Compute next integer version & branch name
+      - name: Compute next version
+        id: version
+        run: |
+          # list remote heads matching version-*
+          versions=$(git ls-remote --heads origin 'refs/heads/version-*' \
+            | awk '{print $2}' \
+            | sed 's|refs/heads/version-||' \
+            | sort -n)
+          echo "Found versions: $versions"
+
+          if [ -z "$versions" ]; then
+            next=1
+          else
+            max=$(echo "$versions" | tail -n1)
+            next=$((max + 1))
+          fi
+
+          echo "next_version=$next" >> $GITHUB_OUTPUT
+          echo "branch=version-$next" >> $GITHUB_OUTPUT
+
+      # 3. Create the new branch from the current commit
+      - name: Create version branch
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = '${{ steps.version.outputs.branch }}';
+            
+            // Create the new branch from the current commit SHA
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              ref:   `refs/heads/${branch}`,
+              sha:   context.sha 
+            });
+
+      # 4. Build your React app (using the already checked out code)
+      - name: Install & build
+        run: |
+          yarn install
+          yarn run build
+
+      # 5. Deploy to GH Pages
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./out
+          force_orphan: true
+</file>
+
+<file path=".kilocode/rules/image-asset-paths.md">
+# Image Asset Paths
+
+## Rule: Always use `getAssetPath` for image paths
+
+When adding images to your application, always use the `getAssetPath` utility function from `lib/utils.ts` to ensure that image paths work correctly in both development and production environments.
+
+## Why This Is Important
+
+This project is configured to be deployed to GitHub Pages, which serves the application from a subdirectory (example: `/GameJamAITemplate`) rather than the root path. 
+
+Without proper path handling:
+- Images will load correctly in development (localhost)
+- Images will fail to load in production (GitHub Pages)
+
+The `getAssetPath` function automatically adds the correct base path prefix in production environments while keeping paths simple in development.
+
+## Correct Usage
+
+```typescript
+// Import the utility function
+import { getAssetPath } from '../lib/utils';
+
+// Use the function for image paths
+const imagePath = getAssetPath('/cat.png');
+
+// Use with Next.js Image component
+<Image 
+  src={getAssetPath('/cat.png')} 
+  alt="Cat" 
+  width={100} 
+  height={100} 
+/>
+```
+
+## Incorrect Usage
+
+```typescript
+// DON'T use absolute paths directly
+const imagePath = '/cat.png';  // ❌ Will break in production
+
+// DON'T use relative paths without getAssetPath
+<Image 
+  src="/cat.png"  // ❌ Will break in production
+  alt="Cat" 
+  width={100} 
+  height={100} 
+/>
+```
+
+## Implementation Details
+
+The `getAssetPath` function is implemented in `lib/utils.ts`:
+
+```typescript
+/**
+ * Utility function to get the correct path for assets based on the environment
+ * @param path The path to the asset (should start with '/')
+ * @returns The correct path with basePath prefix if needed
+ */
+export function getAssetPath(path: string): string {
+  // Make sure path starts with '/'
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // In development, we don't need the basePath
+  if (process.env.NODE_ENV === 'development') {
+    return normalizedPath;
+  }
+  
+  // In production, we need to add the basePath
+  // The basePath is defined in next.config.prod.js as '/GameJamAITemplate'
+  const basePath = `/${repoName}`;
+  return `${basePath}${normalizedPath}`;
+}
+```
+
+## Configuration
+
+The repository name is defined in `lib/repoName.js`:
+
+```javascript
+/**
+ * Repository name used for GitHub Pages deployment
+ * This file is imported by both utils.ts and next.config.prod.js
+ */
+export const repoName = 'GameJamAITemplate';
+```
+
+**Important:** The value of `repoName` will change as you continue to build your application. The current value "GameJamAITemplate" is just a placeholder and should be updated to match your actual repository name when you deploy your project.
+
+The base path is configured in `next.config.prod.js` using this imported value:
+
+```javascript
+import { repoName } from './lib/repoName.js';
+
+const nextConfig = {
+  basePath: `/${repoName}`,
+  assetPrefix: `/${repoName}/`,
+  // ... other configuration
+};
+```
+
+## When Adding New Images
+
+1. Place your image files in the `public` directory
+2. Reference them using `getAssetPath('/your-image.png')`
+3. Always include the leading slash in the path
+
+Following this rule ensures that your application will work correctly in all environments.
+</file>
+
+<file path=".kilocode/rules/repo-name-import.md">
+# Repository Name Import
+
+## Rule: Always import `repoName` from the JavaScript file
+
+When you need to use the repository name in your code, always import the `repoName` constant from `lib/repoName.js` instead of defining it directly in your files. This ensures consistency across the codebase and allows both JavaScript and TypeScript files to access the same value.
+
+**Important:** The value of `repoName` will change as you continue to build your application. The current value "GameJamAITemplate" is just a placeholder and should be updated to match your actual repository name when you deploy your project.
+
+## Why This Is Important
+
+This project uses a mix of JavaScript and TypeScript files, including Next.js configuration files that are processed in a JavaScript context. 
+
+Without a shared JavaScript source for the repository name:
+- TypeScript files can't be directly imported in JavaScript contexts
+- Changes to the repository name would need to be made in multiple places
+- TypeScript errors may occur when building the project
+
+Using a dedicated JavaScript file for the repository name ensures compatibility across all file types and maintains a single source of truth.
+
+## Correct Usage
+
+```javascript
+// In JavaScript files (like next.config.js)
+import { repoName } from './lib/repoName.js';
+
+const config = {
+  basePath: `/${repoName}`,
+  // other configuration
+};
+```
+
+```typescript
+// In TypeScript files (like utils.ts)
+import { repoName } from './repoName.js';
+
+export function getAssetPath(path: string): string {
+  // ...
+  const basePath = `/${repoName}`;
+  return `${basePath}${normalizedPath}`;
+}
+```
+
+## Incorrect Usage
+
+```javascript
+// DON'T define repoName directly in JavaScript files
+const repoName = 'GameJamAITemplate'; // ❌ Creates duplication
+
+// DON'T import from TypeScript files in JavaScript contexts
+import { repoName } from './lib/utils.ts'; // ❌ Will cause TypeScript errors
+```
+
+```typescript
+// DON'T define repoName directly in TypeScript files
+export const repoName = 'GameJamAITemplate'; // ❌ Creates duplication
+```
+
+## Implementation Details
+
+The repository name is defined in `lib/repoName.js`:
+
+```javascript
+/**
+ * Repository name used for GitHub Pages deployment
+ * This file is imported by both utils.ts and next.config.js/next.config.prod.js
+ */
+export const repoName = 'GameJamAITemplate';
+```
+
+This file is then imported by:
+
+1. `lib/utils.ts` for use in the `getAssetPath` function
+2. `next.config.prod.js` for configuring the base path and asset prefix
+
+## When Changing the Repository Name
+
+When you're ready to deploy your own project (not using the GameJamAITemplate name):
+
+1. Update the repository name only in `lib/repoName.js`
+2. All files that import this constant will automatically use the new value
+3. Run the build process to ensure everything works correctly
+
+This is a critical step before deployment, as the repository name determines the base path for your application on GitHub Pages. The value should match your actual GitHub repository name.
+
+Following this rule ensures that your application maintains consistency and avoids TypeScript errors when building the project.
+</file>
+
+<file path=".kilocode/rules.md">
+# KiloCode Rules
+
+This document provides an overview of all the rules defined for this project.
+
+## Image Assets
+
+- [Image Asset Paths](.kilocode/rules/image-asset-paths.md) - Always use `getAssetPath` for image paths to ensure they work correctly in both development and production environments.
+
+## Configuration
+
+- [Repository Name Import](.kilocode/rules/repo-name-import.md) - Always import `repoName` from the JavaScript file to ensure compatibility between JavaScript and TypeScript files.
+
+## Adding New Rules
+
+When adding new rules to the project:
+
+1. Create a new markdown file in the `.kilocode/rules/` directory
+2. Add a link to the new rule in this file
+3. Make sure the rule is clear, concise, and includes examples of correct and incorrect usage
+</file>
+
+<file path="app/index.js">
+import { useCallback, useEffect, useState } from 'react'
+import Button from '../components/Button'
+import ClickCount from '../components/ClickCount'
+import styles from '../styles/home.module.css'
+
+function throwError() {
+  console.log(
+    // The function body() is not defined
+    document.body()
+  )
+}
+
+function Home() {
+  const [count, setCount] = useState(0)
+  const increment = useCallback(() => {
+    setCount((v) => v + 1)
+  }, [setCount])
+
+  useEffect(() => {
+    const r = setInterval(() => {
+      increment()
+    }, 1000)
+
+    return () => {
+      clearInterval(r)
+    }
+  }, [increment])
+
+  return (
+    <main className={styles.main}>
+      <h1>Fast Refresh Demo</h1>
+      <p>
+        Fast Refresh is a Next.js feature that gives you instantaneous feedback
+        on edits made to your React components, without ever losing component
+        state.
+      </p>
+      <hr className={styles.hr} />
+      <div>
+        <p>
+          Auto incrementing value. The counter won't reset after edits or if
+          there are errors.
+        </p>
+        <p>Current value: {count}</p>
+      </div>
+      <hr className={styles.hr} />
+      <div>
+        <p>Component with state.</p>
+        <ClickCount />
+      </div>
+      <hr className={styles.hr} />
+      <div>
+        <p>
+          The button below will throw 2 errors. You'll see the error overlay to
+          let you know about the errors but it won't break the page or reset
+          your state.
+        </p>
+        <Button
+          onClick={(e) => {
+            setTimeout(() => document.parentNode(), 0)
+            throwError()
+          }}
+        >
+          Throw an Error
+        </Button>
+      </div>
+      <hr className={styles.hr} />
+    </main>
+  )
+}
+
+export default Home
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from 'next'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: 'Module Demo',
+  description: 'Demo application for game module',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+</file>
+
+<file path="components/Button.js">
+import styles from './Button.module.css'
+
+export default function Button(props) {
+  return <button type="button" className={styles.btn} {...props} />
+}
+</file>
+
+<file path="components/Button.module.css">
+button.btn {
+  margin: 0;
+  border: 1px solid #d1d1d1;
+  border-radius: 5px;
+  padding: 0.5em;
+  vertical-align: middle;
+  white-space: normal;
+  background: none;
+  line-height: 1;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+button.btn {
+  padding: 0.65em 1em;
+  background: #0076ff;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+button.btn:focus {
+  outline: 0;
+  border-color: #0076ff;
+}
+button.btn:hover {
+  background: rgba(0, 118, 255, 0.8);
+}
+button.btn:focus {
+  box-shadow: 0 0 0 2px rgba(0, 118, 255, 0.5);
+}
+</file>
+
+<file path="components/ClickCount.js">
+import { useCallback, useState } from 'react'
+import Button from './Button'
+
+export default function ClickCount() {
+  const [count, setCount] = useState(0)
+  const increment = useCallback(() => {
+    setCount((v) => v + 1)
+  }, [setCount])
+
+  return <Button onClick={increment}>Clicks: {count}</Button>
+}
+</file>
+
+<file path="docs/asset-management.md">
+# Asset Management
+
+This guide explains how to properly handle assets (images, fonts, etc.) in this Next.js GitHub Pages template.
+
+## The Challenge with GitHub Pages
+
+When deploying to GitHub Pages, your application is served from a subdirectory path:
+
+```
+https://username.github.io/repository-name/
+```
+
+This creates a challenge for asset paths:
+
+- In development, assets are served from the root path (`/`)
+- In production, assets need to be served from a base path (`/repository-name/`)
+
+If you use absolute paths directly (like `/image.png`), they will work in development but break in production.
+
+## The Solution: `getAssetPath` Utility
+
+This template includes a utility function called `getAssetPath` that automatically handles this difference between environments:
+
+```typescript
+import { getAssetPath } from '../lib/utils';
+
+// Use the function for image paths
+const imagePath = getAssetPath('/cat.png');
+```
+
+## How to Use Assets
+
+### Adding Images
+
+1. Place your image files in the `public` directory
+2. Reference them using the `getAssetPath` utility function
+
+### Example with Next.js Image Component
+
+```tsx
+import Image from 'next/image';
+import { getAssetPath } from '../lib/utils';
+
+export default function MyComponent() {
+  return (
+    <Image
+      src={getAssetPath('/my-image.png')}
+      alt="Description"
+      width={100}
+      height={100}
+    />
+  );
+}
+```
+
+### Example with CSS Background Images
+
+```tsx
+import styles from './MyComponent.module.css';
+import { getAssetPath } from '../lib/utils';
+
+export default function MyComponent() {
+  // Create a style object with the correct path
+  const style = {
+    backgroundImage: `url(${getAssetPath('/background.jpg')})`,
+  };
+
+  return <div style={style} className={styles.container}></div>;
+}
+```
+
+### Example with Regular HTML Tags
+
+```tsx
+import { getAssetPath } from '../lib/utils';
+
+export default function MyComponent() {
+  return <img src={getAssetPath('/logo.png')} alt="Logo" />;
+}
+```
+
+## Common Mistakes to Avoid
+
+### ❌ Using Absolute Paths Directly
+
+```tsx
+// DON'T do this
+<img src="/logo.png" alt="Logo" />
+```
+
+### ❌ Using Relative Paths Without getAssetPath
+
+```tsx
+// DON'T do this
+<img src="logo.png" alt="Logo" />
+```
+
+### ❌ Hardcoding the Repository Name
+
+```tsx
+// DON'T do this
+<img src="/GameJamAITemplate/logo.png" alt="Logo" />
+```
+
+## How It Works
+
+The `getAssetPath` function is implemented in `lib/utils.ts`:
+
+```typescript
+import { repoName } from './repoName.js';
+
+export function getAssetPath(path: string): string {
+  // Make sure path starts with '/'
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // In development, we don't need the basePath
+  if (process.env.NODE_ENV === 'development') {
+    return normalizedPath;
+  }
+  
+  // In production, we need to add the basePath
+  const basePath = `/${repoName}`;
+  return `${basePath}${normalizedPath}`;
+}
+```
+
+It:
+1. Normalizes the path to ensure it starts with a slash
+2. In development, returns the path as-is
+3. In production, prefixes the path with the repository name
+
+## Supported Asset Types
+
+You can use `getAssetPath` with any type of asset stored in the `public` directory:
+
+- Images (PNG, JPG, SVG, GIF, etc.)
+- Fonts
+- Videos
+- Audio files
+- JSON data files
+- Any other static assets
+
+## Updating the Repository Name
+
+When you deploy your own project, you'll need to update the repository name in `lib/repoName.js`:
+
+```javascript
+export const repoName = 'your-actual-repository-name';
+```
+
+This ensures that all asset paths will work correctly in your deployed application.
+
+## Best Practices
+
+1. **Always use `getAssetPath`** for any assets in the `public` directory
+2. **Include the leading slash** in the path you pass to `getAssetPath`
+3. **Keep all static assets** in the `public` directory
+4. **Update the repository name** before deployment
+5. **Test your application** in both development and production builds
+
+By following these guidelines, your assets will work correctly in both development and production environments.
+</file>
+
+<file path="docs/faq.md">
+# Frequently Asked Questions (FAQ)
+
+This document answers common questions about the Next.js GitHub Pages Template.
+
+## General Questions
+
+### What is this template for?
+
+This template is designed to make it easy to create and deploy Next.js applications to GitHub Pages. It includes pre-configured settings and utilities to handle the specific requirements of GitHub Pages deployment, such as asset path management and static HTML export.
+
+### Who should use this template?
+
+This template is ideal for:
+- Developers building portfolio sites, project showcases, or documentation sites
+- Teams working on hackathons or game jams who need quick deployment
+- Non-technical users who want to create a web presence with minimal configuration
+- Anyone who wants to deploy a Next.js application to GitHub Pages
+
+### Is this template free to use?
+
+Yes, this template is free to use. You can create as many projects from it as you like.
+
+## Technical Questions
+
+### What version of Next.js does this template use?
+
+This template uses Next.js with the App Router, which was introduced in Next.js 13. Check the `package.json` file for the exact version.
+
+### Does this template support TypeScript?
+
+Yes, this template includes TypeScript support. You can write your components and utilities in either JavaScript or TypeScript.
+
+### Can I use this template for a commercial project?
+
+Yes, you can use this template for commercial projects. However, be sure to check the license of any third-party dependencies you add to your project.
+
+### Does this template support server-side rendering (SSR)?
+
+This template is configured for static site generation (SSG) because GitHub Pages only supports static files. Server-side rendering requires a server to run the Node.js code, which GitHub Pages doesn't support.
+
+## Asset Management
+
+### Why do I need to use `getAssetPath` for images?
+
+GitHub Pages serves your site from a subdirectory (e.g., `/repository-name/`), which means that absolute paths like `/image.png` won't work in production. The `getAssetPath` utility automatically adds the correct base path in production while keeping paths simple in development.
+
+### Where should I put my images and other assets?
+
+Place all static assets (images, fonts, etc.) in the `public` directory. Then reference them using the `getAssetPath` utility function.
+
+### Can I use SVG files with this template?
+
+Yes, you can use SVG files just like any other image format. Place them in the `public` directory and reference them using the `getAssetPath` utility function.
+
+## Deployment
+
+### How do I deploy my site to GitHub Pages?
+
+See the [GitHub Pages Deployment Guide](github-pages-deployment.md) for detailed instructions on deploying your site to GitHub Pages.
+
+### How long does it take for changes to appear after deployment?
+
+After pushing to the `gh-pages` branch, it typically takes a few minutes for GitHub Pages to build and deploy your site. You can check the status in the "GitHub Pages" section of your repository settings.
+
+### Can I use a custom domain with this template?
+
+Yes, you can use a custom domain with GitHub Pages. After setting up your custom domain in the GitHub repository settings, you'll need to update the `repoName` in `lib/repoName.js` to an empty string or adjust the `basePath` configuration accordingly.
+
+### What if I want to deploy to a different hosting provider?
+
+This template is optimized for GitHub Pages, but you can deploy it to any static site hosting provider. You may need to adjust the configuration based on the requirements of your chosen hosting provider.
+
+## Customization
+
+### How do I change the site's appearance?
+
+You can customize the site's appearance by modifying the CSS files. Global styles are in `app/globals.css`, and component-specific styles are in their respective CSS modules.
+
+### Can I add more pages to my site?
+
+Yes, you can add as many pages as you need. Create new files in the `app` directory following the Next.js App Router conventions. See the [Getting Started Guide](getting-started.md) for examples.
+
+### How do I add new components?
+
+Create new component files in the `components` directory. You can use either JavaScript (`.js`) or TypeScript (`.tsx`) files. See the [Getting Started Guide](getting-started.md) for examples.
+
+### Can I use other React libraries with this template?
+
+Yes, you can use any React library that's compatible with Next.js. Install the library using npm and import it in your components as needed.
+
+## Troubleshooting
+
+### My images aren't showing up in the deployed site
+
+Make sure you're using the `getAssetPath` utility function for all image paths. See the [Asset Management Guide](asset-management.md) for details.
+
+### I'm getting build errors when I run `npm run build`
+
+Check that all your dependencies are installed (`npm install`) and that your code doesn't have any syntax errors. Also, ensure that you're using the correct import paths for your components and utilities.
+
+### My site works locally but not when deployed
+
+This is often due to path issues. Make sure you're using the `getAssetPath` utility for all assets and that you've updated the repository name in `lib/repoName.js` to match your actual GitHub repository name.
+
+### How do I fix 404 errors when refreshing pages?
+
+GitHub Pages doesn't natively support client-side routing. You can either:
+1. Use hash-based routing
+2. Create a custom 404.html page that redirects to the correct route
+3. Add a script to your index.html that redirects based on the URL
+
+## Getting More Help
+
+If your question isn't answered here, you can:
+
+1. Check the other documentation files in the `docs` directory
+2. Consult the [Next.js documentation](https://nextjs.org/docs)
+3. Open an issue in the GitHub repository
+</file>
+
+<file path="docs/getting-started.md">
+# Getting Started Guide
+
+This guide will help you get up and running with the Next.js GitHub Pages Template. It's designed for both engineers and non-engineers to quickly set up and start developing.
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- [Node.js](https://nodejs.org/) (version 14 or later)
+- [npm](https://www.npmjs.com/) (usually comes with Node.js)
+- [Git](https://git-scm.com/)
+- A GitHub account
+
+## Quick Start
+
+### 1. Create a New Repository from the Template
+
+1. Go to the template repository on GitHub
+2. Click the "Use this template" button
+3. Name your new repository
+4. Click "Create repository from template"
+
+### 2. Clone Your New Repository
+
+```bash
+git clone https://github.com/your-username/your-repository-name.git
+cd your-repository-name
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Start the Development Server
+
+```bash
+npm run dev
+```
+
+This will start the development server at [http://localhost:3000](http://localhost:3000).
+
+## Customizing the Template
+
+### Update Repository Name
+
+Before deploying, update the repository name in `lib/repoName.js`:
+
+```javascript
+export const repoName = 'your-repository-name';
+```
+
+### Modify the Home Page
+
+Edit `app/page.tsx` to customize the home page content:
+
+```tsx
+// app/page.tsx
+'use client'
+
+import styles from '../styles/home.module.css'
+import { getAssetPath } from '../lib/utils'
+
+export default () => {
+  return (
+    <main className={styles.main}>
+      <h1>My Awesome Project</h1>
+      <p>Welcome to my project!</p>
+      {/* Add your content here */}
+    </main>
+  );
+}
+```
+
+### Add New Pages
+
+Create new pages in the `app` directory:
+
+```tsx
+// app/about/page.tsx
+export default function AboutPage() {
+  return (
+    <div>
+      <h1>About</h1>
+      <p>This is the about page.</p>
+    </div>
+  );
+}
+```
+
+This will be accessible at `/about`.
+
+### Add New Components
+
+Create reusable components in the `components` directory:
+
+```jsx
+// components/Card.js
+import styles from './Card.module.css'
+
+export default function Card({ title, children }) {
+  return (
+    <div className={styles.card}>
+      <h2>{title}</h2>
+      <div>{children}</div>
+    </div>
+  );
+}
+```
+
+And the corresponding CSS module:
+
+```css
+/* components/Card.module.css */
+.card {
+  border: 1px solid #eaeaea;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+```
+
+### Add Images and Assets
+
+1. Place image files in the `public` directory
+2. Reference them using the `getAssetPath` utility:
+
+```tsx
+import Image from 'next/image'
+import { getAssetPath } from '../lib/utils'
+
+export default function MyComponent() {
+  return (
+    <Image
+      src={getAssetPath('/my-image.png')}
+      alt="My Image"
+      width={300}
+      height={200}
+    />
+  );
+}
+```
+
+## Development Workflow
+
+### Running in Development Mode
+
+```bash
+npm run dev
+```
+
+This starts the development server with:
+- Hot reloading (changes appear instantly)
+- Error reporting
+- Development-specific configurations
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+This creates a production-ready build in the `out` directory.
+
+## Deployment
+
+When you're ready to deploy your site to GitHub Pages, follow the instructions in the [GitHub Pages Deployment Guide](github-pages-deployment.md).
+
+## Working with the Template (For Non-Engineers)
+
+If you're not familiar with coding, here are some simple ways to customize the template:
+
+### Changing Text Content
+
+1. Open `app/page.tsx`
+2. Find the text between tags like `<h1>` and `</h1>` or `<p>` and `</p>`
+3. Replace it with your own content
+4. Save the file
+
+### Changing Colors and Styles
+
+1. Open `app/globals.css` or the specific CSS module file
+2. Look for color values (like `#ffffff` or `rgb(0, 0, 0)`)
+3. Replace them with your preferred colors
+4. Save the file
+
+### Adding Images
+
+1. Add your image to the `public` directory
+2. In your component or page file, import and use the `getAssetPath` utility
+3. Use the image with the Next.js `Image` component as shown above
+
+## Getting Help
+
+If you encounter any issues or have questions:
+
+1. Check the [FAQ](faq.md) for common questions and answers
+2. Review the specific guides for [Asset Management](asset-management.md) and [GitHub Pages Deployment](github-pages-deployment.md)
+3. Consult the [Next.js documentation](https://nextjs.org/docs)
+4. Ask for help in the GitHub repository's Issues section
+
+## Next Steps
+
+- Learn more about the [Project Structure](project-structure.md)
+- Understand how to properly [Manage Assets](asset-management.md)
+- Explore the [Next.js documentation](https://nextjs.org/docs) for advanced features
+</file>
+
+<file path="docs/github-pages-deployment.md">
+# GitHub Pages Deployment Guide
+
+This guide explains how to deploy your Next.js application to GitHub Pages using this template.
+
+## Understanding GitHub Pages Deployment
+
+GitHub Pages hosts your site from a specific branch (usually `gh-pages`) and serves it at a URL like:
+```
+https://username.github.io/repository-name/
+```
+
+This template is pre-configured to handle the specific requirements of GitHub Pages deployment, including:
+
+1. Proper asset path handling for the subdirectory structure
+2. Static HTML export configuration
+3. Preventing Jekyll processing with `.nojekyll`
+
+## Deployment Steps
+
+### 1. Update Repository Name
+
+Before deploying, update the repository name in `lib/repoName.js`:
+
+```javascript
+export const repoName = 'your-actual-repository-name';
+```
+
+This ensures that all asset paths and links will work correctly when deployed.
+
+### 2. Build the Application for Production
+
+Run the production build command:
+
+```bash
+npm run build
+```
+
+This command:
+- Uses the production configuration from `next.config.prod.js`
+- Generates static HTML files in the `out` directory
+- Configures asset paths with the correct base path
+
+### 3. Deploy to GitHub Pages
+
+#### GitHub Actions
+
+This template includes a GitHub Actions workflow file at `.github/workflows/ghp-release-test.yaml` that handles deployment to GitHub Pages:
+
+```yaml
+name: Create • Build • Deploy Version Branch → GH Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the branch that triggered the workflow
+      - name: Checkout current branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # 2. Compute next integer version & branch name
+      - name: Compute next version
+        id: version
+        run: |
+          # list remote heads matching version-*
+          versions=$(git ls-remote --heads origin 'refs/heads/version-*' \
+            | awk '{print $2}' \
+            | sed 's|refs/heads/version-||' \
+            | sort -n)
+          echo "Found versions: $versions"
+
+          if [ -z "$versions" ]; then
+            next=1
+          else
+            max=$(echo "$versions" | tail -n1)
+            next=$((max + 1))
+          fi
+
+          echo "next_version=$next" >> $GITHUB_OUTPUT
+          echo "branch=version-$next" >> $GITHUB_OUTPUT
+
+      # 3. Create the new branch from the current commit
+      - name: Create version branch
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = '${{ steps.version.outputs.branch }}';
+            
+            // Create the new branch from the current commit SHA
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              ref:   `refs/heads/${branch}`,
+              sha:   context.sha
+            });
+
+      # 4. Build your React app (using the already checked out code)
+      - name: Install & build
+        run: |
+          yarn install
+          yarn run build
+
+      # 5. Deploy to GH Pages
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./out
+          force_orphan: true
+```
+
+This workflow:
+
+1. Is triggered manually via the GitHub Actions interface (workflow_dispatch)
+2. Creates a new version branch (e.g., version-1, version-2) from the current commit
+3. Installs dependencies and builds the application
+4. Deploys the built files to the gh-pages branch
+
+To use this workflow:
+
+1. Go to your GitHub repository
+2. Navigate to the "Actions" tab
+3. Select the "Create • Build • Deploy Version Branch → GH Pages" workflow
+4. Click "Run workflow" and select the branch you want to deploy
+
+### 4. Configure GitHub Repository Settings
+
+1. Go to your GitHub repository
+2. Navigate to Settings > Pages
+3. Ensure the source is set to the `gh-pages` branch
+4. Check that your site is published at the correct URL
+
+## Verifying Deployment
+
+After deployment, your site should be available at:
+```
+https://username.github.io/repository-name/
+```
+
+Check that:
+- All pages load correctly
+- Images and other assets display properly
+- Links work as expected
+
+If you encounter any issues with images or assets, ensure you're using the `getAssetPath` utility function as described in the [Asset Management](asset-management.md) guide.
+
+## Troubleshooting
+
+### Images Not Loading
+
+If images aren't loading in the deployed site:
+
+1. Ensure you're using the `getAssetPath` utility for all image paths
+2. Verify that the repository name in `lib/repoName.js` matches your actual GitHub repository name
+3. Check that the `.nojekyll` file exists in your `public` directory
+
+### 404 Errors on Page Refresh
+
+GitHub Pages doesn't natively support client-side routing. To handle this:
+
+1. Consider using hash-based routing for client-side navigation
+2. Or create a custom 404.html page that redirects to the correct route
+
+### Build Errors
+
+If you encounter build errors:
+
+1. Ensure all dependencies are installed: `npm install`
+2. Check that your Next.js version is compatible with the static export feature
+3. Verify that all environment variables are properly set
+
+## Additional Resources
+
+- [Next.js Static Export Documentation](https://nextjs.org/docs/advanced-features/static-html-export)
+- [GitHub Pages Documentation](https://docs.github.com/en/pages)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+</file>
+
+<file path="docs/index.md">
+# Next.js GitHub Pages Template Documentation
+
+Welcome to the documentation for the Next.js GitHub Pages Template. This documentation will help you understand, use, and customize the template for your projects.
+
+## Table of Contents
+
+1. [Overview](overview.md) - General introduction to the template
+2. [Getting Started](getting-started.md) - Guide for new users to get started
+3. [Project Structure](project-structure.md) - Explanation of the project's file structure
+4. [Asset Management](asset-management.md) - Documentation on how to handle assets
+5. [GitHub Pages Deployment](github-pages-deployment.md) - Guide for deploying to GitHub Pages
+6. [FAQ](faq.md) - Common questions and answers
+
+## For Engineers
+
+If you're an engineer working with this template, you'll find these resources particularly helpful:
+
+- [Project Structure](project-structure.md) - Understand the codebase organization
+- [Asset Management](asset-management.md) - Learn about the asset path handling system
+- [GitHub Pages Deployment](github-pages-deployment.md) - Detailed deployment instructions
+
+## For Non-Engineers
+
+If you're not familiar with coding, these guides will help you get started:
+
+- [Getting Started](getting-started.md) - Basic setup and customization
+- [FAQ](faq.md) - Answers to common questions
+- The "Working with the Template (For Non-Engineers)" section in [Getting Started](getting-started.md)
+
+## Key Features
+
+This template includes several key features to make development and deployment easier:
+
+1. **Pre-configured for GitHub Pages** - Ready to deploy with minimal setup
+2. **Asset Path Management** - Ensures assets work in both development and production
+3. **Centralized Configuration** - Single source of truth for repository name
+4. **Developer-Friendly** - Includes best practices and guidelines
+
+## Getting Help
+
+If you need additional help:
+
+1. Check the [FAQ](faq.md) for answers to common questions
+2. Review the specific documentation for your area of interest
+3. Consult the [Next.js documentation](https://nextjs.org/docs) for framework-specific questions
+</file>
+
+<file path="docs/overview.md">
+# Next.js GitHub Pages Template
+
+## Overview
+
+This template provides a ready-to-use Next.js application configured for seamless deployment to GitHub Pages. It's designed to help both engineers and non-engineers quickly set up and deploy web applications without worrying about the complexities of configuration.
+
+## Key Features
+
+- **Pre-configured for GitHub Pages**: The template includes all necessary configurations to deploy your Next.js application to GitHub Pages with minimal setup.
+
+- **Asset Path Management**: Built-in utilities ensure that images and other assets work correctly in both development and production environments, addressing common issues with GitHub Pages subdirectory hosting.
+
+- **Fast Refresh Demo**: Includes a demonstration of Next.js Fast Refresh feature, which provides instantaneous feedback on edits made to React components without losing component state.
+
+- **Centralized Configuration**: Uses a single source of truth for repository name configuration, making it easy to update when deploying your own project.
+
+- **Developer-Friendly**: Includes best practices and guidelines to ensure consistent code quality and compatibility across different environments.
+
+## Who Is This For?
+
+This template is designed for:
+
+- **Engineers** who want a quick starting point for Next.js projects that will be deployed to GitHub Pages
+- **Non-engineers** who need to collaborate on web projects without dealing with complex deployment configurations
+- **Teams** working on hackathons, game jams, or other time-sensitive projects where quick setup and deployment are essential
+
+## Getting Started
+
+To get started with this template, see the [Getting Started Guide](getting-started.md) for detailed instructions on how to use and customize this template for your project.
+
+## Learn More
+
+- [Project Structure](project-structure.md): Understand how the project is organized
+- [GitHub Pages Deployment](github-pages-deployment.md): Learn how to deploy your application to GitHub Pages
+- [Asset Management](asset-management.md): Understand how to properly handle images and other assets
+- [FAQ](faq.md): Find answers to common questions
+</file>
+
+<file path="docs/project-structure.md">
+# Project Structure
+
+This document explains the organization of the Next.js GitHub Pages Template, helping you understand where to find and modify different parts of the application.
+
+## Directory Structure
+
+```
+/
+├── .devcontainer/         # Development container configuration
+├── .kilocode/             # Project rules and guidelines
+│   └── rules/             # Specific coding rules
+├── app/                   # Next.js App Router files
+│   ├── globals.css        # Global CSS styles
+│   ├── layout.tsx         # Root layout component
+│   └── page.tsx           # Home page component
+├── components/            # Reusable React components
+│   ├── Button.js          # Button component
+│   ├── Button.module.css  # Button component styles
+│   └── ClickCount.js      # Click counter component
+├── docs/                  # Documentation files
+├── lib/                   # Utility functions and shared code
+│   ├── repoName.js        # Repository name configuration
+│   └── utils.ts           # Utility functions (including getAssetPath)
+├── prisma/                # Database schema and migrations (if using Prisma)
+├── public/                # Static assets (images, fonts, etc.)
+│   ├── .nojekyll          # Prevents GitHub Pages from using Jekyll
+│   └── cat.png/jpg        # Example images
+├── styles/                # Global and page-specific styles
+│   └── home.module.css    # Home page styles
+├── next.config.js         # Next.js configuration
+├── next.config.dev.js     # Development-specific configuration
+├── next.config.prod.js    # Production-specific configuration
+├── package.json           # Project dependencies and scripts
+└── tsconfig.json          # TypeScript configuration
+```
+
+## Key Files Explained
+
+### Configuration Files
+
+- **next.config.js**: The main Next.js configuration file used in development.
+- **next.config.prod.js**: Production configuration with GitHub Pages-specific settings.
+- **next.config.dev.js**: Development-specific configuration.
+- **lib/repoName.js**: Contains the repository name used for GitHub Pages deployment paths.
+- **tsconfig.json**: TypeScript configuration for the project.
+- **.nojekyll**: Empty file that prevents GitHub Pages from processing the site with Jekyll.
+
+### Application Files
+
+- **app/page.tsx**: The main page component of the application, demonstrating Fast Refresh and image handling.
+- **app/layout.tsx**: The root layout component that wraps all pages.
+- **app/globals.css**: Global CSS styles applied to the entire application.
+
+### Components
+
+- **components/Button.js**: A reusable button component.
+- **components/ClickCount.js**: A component that demonstrates state management with a click counter.
+
+### Utilities
+
+- **lib/utils.ts**: Contains utility functions, including `getAssetPath` for handling asset paths in different environments.
+- **lib/repoName.js**: Exports the repository name as a constant for use throughout the application.
+
+### Styles
+
+- **styles/home.module.css**: CSS modules for the home page.
+- **components/Button.module.css**: CSS modules for the Button component.
+
+### Project Rules
+
+- **.kilocode/rules/**: Contains markdown files with project-specific rules and guidelines.
+- **.kilocode/rules/image-asset-paths.md**: Guidelines for handling image paths.
+- **.kilocode/rules/repo-name-import.md**: Guidelines for importing the repository name.
+
+## Understanding the App Structure
+
+This template uses Next.js with the App Router, which follows a file-system based routing approach:
+
+- **app/page.tsx**: Defines the main page component for the root route (/).
+- **app/layout.tsx**: Defines the shared layout for all pages.
+
+## Where to Add New Features
+
+When adding new features to your application:
+
+1. **New Pages**: Add new page components in the `app` directory.
+2. **New Components**: Add reusable components in the `components` directory.
+3. **New Styles**: Add global styles to `app/globals.css` or create new CSS modules in the `styles` directory.
+4. **New Assets**: Add images and other static assets to the `public` directory.
+5. **New Utilities**: Add utility functions to the `lib` directory.
+
+## Important Conventions
+
+1. **Asset Paths**: Always use the `getAssetPath` utility function from `lib/utils.ts` when referencing assets.
+2. **Repository Name**: Always import the `repoName` constant from `lib/repoName.js` when needed.
+3. **CSS Modules**: Use CSS modules for component-specific styles to avoid style conflicts.
+</file>
+
+<file path="lib/prisma.ts">
+// lib/prisma.ts
+import { PrismaClient } from '@prisma/client';
+
+declare global {
+  var prisma: PrismaClient | undefined;
+}
+
+export const prisma = global.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') global.prisma = prisma;
+</file>
+
+<file path="lib/utils.ts">
+import { repoName } from './repoName.js';
+
+/**
+ * Utility function to get the correct path for assets based on the environment
+ * @param path The path to the asset (should start with '/')
+ * @returns The correct path with basePath prefix if needed
+ */
+export function getAssetPath(path: string): string {
+  // Make sure path starts with '/'
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // In development, we don't need the basePath
+  if (process.env.NODE_ENV === 'development') {
+    return normalizedPath;
+  }
+  
+  // In production, we need to add the basePath
+  // The basePath is defined in next.config.prod.js as '/GameJamAITemplate'
+  const basePath = `/${repoName}`;
+  return `${basePath}${normalizedPath}`;
+}
+</file>
+
+<file path="prisma/schema.prisma">
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/lib/generated/prisma
+
+*.env
+</file>
+
+<file path="global.css">
+body {
+  font-family: 'SF Pro Text', 'SF Pro Icons', 'Helvetica Neue', 'Helvetica',
+    'Arial', sans-serif;
+  margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.65;
+  word-break: break-word;
+  font-kerning: auto;
+  font-variant: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  hyphens: auto;
+}
+</file>
+
+<file path="next.config.dev.js">
+/** @type {import('next').NextConfig} */
+
+const nextConfig = {
+  images: {
+    unoptimized: true, // Required for static export
+  },
+  // Ensure proper UTF-8 encoding for emojis
+  experimental: {
+    esmExternals: false,
+  },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+    return config;
+  },
+};
+
+export default nextConfig;
+</file>
+
+<file path="next.config.prod.js">
+/** @type {import('next').NextConfig} */
+import { repoName } from './lib/repoName.js'
+
+// Replace with the actual repository name
+
+const nextConfig = {
+  basePath: `/${repoName}`,
+  assetPrefix: `/${repoName}/`,
+  output: 'export',
+  images: {
+    unoptimized: true, // Required for static export
+  },
+  // Ensure proper UTF-8 encoding for emojis
+  experimental: {
+    esmExternals: false,
+  },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+    return config;
+  },
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "game-jam-template",
+  "version": "0.1.0",
+  "description": "",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cp next.config.dev.js next.config.js && next dev",
+    "build": "cp next.config.prod.js next.config.js && next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.13.0",
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8",
+    "prisma": "^6.13.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="README.md">
+# Next.js GitHub Pages Template
+
+Welcome to the Next.js GitHub Pages Template! This template provides a ready-to-use Next.js application configured for seamless deployment to GitHub Pages.
+
+## Features
+
+- **Pre-configured for GitHub Pages** - Ready to deploy with minimal setup
+- **Asset Path Management** - Ensures assets work in both development and production
+- **Fast Refresh Demo** - Demonstrates Next.js Fast Refresh feature
+- **Centralized Configuration** - Single source of truth for repository name
+- **Developer-Friendly** - Includes best practices and guidelines
+
+## Quick Start
+
+To run this application locally:
+
+```bash
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+This will start the development server at [http://localhost:3000](http://localhost:3000).
+
+## Documentation
+
+Comprehensive documentation is available in the [docs](docs/index.md) directory:
+
+- [Overview](docs/overview.md) - General introduction to the template
+- [Getting Started](docs/getting-started.md) - Guide for new users
+- [Project Structure](docs/project-structure.md) - Explanation of the file structure
+- [Asset Management](docs/asset-management.md) - How to handle assets
+- [GitHub Pages Deployment](docs/github-pages-deployment.md) - Deployment guide
+- [FAQ](docs/faq.md) - Common questions and answers
+
+## For Engineers
+
+If you're an engineer working with this template, check out:
+
+- [Project Structure](docs/project-structure.md) - Understand the codebase organization
+- [Asset Management](docs/asset-management.md) - Learn about the asset path handling system
+- [GitHub Pages Deployment](docs/github-pages-deployment.md) - Detailed deployment instructions
+
+## For Non-Engineers
+
+If you're not familiar with coding, these guides will help you get started:
+
+- [Getting Started](docs/getting-started.md) - Basic setup and customization
+- [FAQ](docs/faq.md) - Answers to common questions
+
+## Important Note
+
+Before deploying, update the repository name in `lib/repoName.js`:
+
+```javascript
+export const repoName = 'your-actual-repository-name';
+```
+
+This ensures that all asset paths and links will work correctly when deployed.
+
+## License
+
+This template is available under the MIT License. Feel free to use it for your projects.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": true,
+    "incremental": true,
+    "module": "esnext",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+</file>
+
+<file path="lib/repoName.js">
+/**
+ * Repository name used for GitHub Pages deployment
+ * This file is imported by both utils.ts and next.config.js/next.config.prod.js
+ */
+export const repoName = 'jam03';
+</file>
+
+<file path="styles/home.module.css">
+
+</file>
+
+<file path="next.config.js">
+/** @type {import('next').NextConfig} */
+import { repoName } from './lib/repoName.js'
+
+// Replace with the actual repository name
+
+const nextConfig = {
+  basePath: `/${repoName}`,
+  assetPrefix: `/${repoName}/`,
+  output: 'export',
+  images: {
+    unoptimized: true, // Required for static export
+  },
+  // Ensure proper UTF-8 encoding for emojis
+  experimental: {
+    esmExternals: false,
+  },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+    return config;
+  },
+};
+
+export default nextConfig;
+</file>
+
+<file path="app/globals.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background-color: black;
+  color: white;
+  overflow: hidden;
+}
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.2; }
+}
+</file>
+
+<file path="app/page.tsx">
+'use client'
+
+import { useState, useEffect, useRef } from 'react';
+import { getAssetPath } from '../lib/utils';
+
+// Define the game states
+type GameState = 'waiting' | 'playing' | 'ended';
+
+// Define the structure for a call scenario
+interface CallScenario {
+  id: number;
+  audioFile: string;
+  correctDispatch: 'police' | 'fire' | 'ems' | 'prank';
+}
+
+const allCalls: CallScenario[] = [
+  { id: 1, audioFile: 'police-call-1.mp3', correctDispatch: 'police' },
+  { id: 2, audioFile: 'police-call-2.mp3', correctDispatch: 'police' },
+  { id: 3, audioFile: 'fire-call-1.mp3', correctDispatch: 'fire' },
+  { id: 4, audioFile: 'fire-call-2.mp3', correctDispatch: 'fire' },
+  { id: 5, audioFile: 'ems-call-1.mp3', correctDispatch: 'ems' },
+  { id: 6, audioFile: 'ems-call-2.mp3', correctDispatch: 'ems' },
+  { id: 7, audioFile: 'prank-call-1.mp3', correctDispatch: 'prank' },
+  { id: 8, audioFile: 'prank-call-2.mp3', correctDispatch: 'prank' },
+];
+
+export default function BlindDispatch() {
+  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+  const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
+  const [tutorialPlayed, setTutorialPlayed] = useState({ success: false, failure: false });
+  const [incorrectStreak, setIncorrectStreak] = useState(0);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const radioChatterSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  useEffect(() => {
+    if (gameState === 'playing' && timeLeft > 0) {
+      const timer = setInterval(() => {
+        setTimeLeft(prevTime => prevTime - 1);
+      }, 1000);
+
+      // Handle radio chatter based on time (temporarily disabled)
+      // if (timeLeft === 300) playRadioChatter('radio-chatter-calm.mp3');
+      // else if (timeLeft === 180) playRadioChatter('radio-chatter-medium.mp3');
+      // else if (timeLeft === 60) playRadioChatter('radio-chatter-urgent.mp3');
+
+      return () => clearInterval(timer);
+    } else if (timeLeft === 0) {
+      setGameState('ended');
+      // if (radioChatterSourceRef.current) {
+      //   radioChatterSourceRef.current.stop();
+      // }
+    }
+  }, [gameState, timeLeft]);
+
+  const playAudio = (audioFile: string, loop = false): Promise<AudioBufferSourceNode> => {
+    return new Promise(async (resolve, reject) => {
+      if (!audioContextRef.current) return reject('Audio context not ready');
+
+      const audioPath = getAssetPath(`/audio/${audioFile}`);
+      const response = await fetch(audioPath);
+      if (!response.ok) {
+        return reject(`Failed to fetch audio file: ${audioFile}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      
+      try {
+        const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = audioBuffer;
+        source.loop = loop;
+        source.connect(audioContextRef.current.destination);
+        source.start(0);
+
+        if (!loop) {
+          source.onended = () => resolve(source);
+        } else {
+          resolve(source); // For looping audio, resolve immediately
+        }
+      } catch (error) {
+        console.error(`Failed to decode audio file: ${audioFile}`, error);
+        reject(error);
+      }
+    });
+  };
+
+  const playRadioChatter = async (audioFile: string) => {
+    if (radioChatterSourceRef.current) {
+      radioChatterSourceRef.current.stop();
+    }
+    radioChatterSourceRef.current = await playAudio(audioFile, true);
+  };
+
+  const startGame = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    // Resume audio context if it's suspended
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+
+    console.log('Game starting...');
+    setGameState('playing');
+    setScore(0);
+    setTimeLeft(300);
+    playAudio('call-connect.mp3');
+    startNextCall();
+  };
+
+  const startNextCall = () => {
+    const availableCalls = allCalls.filter(call => call.id !== currentCall?.id);
+    const nextCall = availableCalls[Math.floor(Math.random() * availableCalls.length)];
+    setCurrentCall(nextCall);
+    setTimeout(() => {
+      playAudio(nextCall.audioFile);
+      setIsDispatching(false); // Allow dispatching once the new call audio starts
+    }, 1000);
+  };
+
+  const handleDispatch = async (dispatch: 'police' | 'fire' | 'ems' | 'prank') => {
+    if (!currentCall || isDispatching) return;
+
+    setIsDispatching(true);
+    const isCorrect = dispatch === currentCall.correctDispatch;
+
+    if (isCorrect) {
+      setScore(prev => prev + 1);
+      setIncorrectStreak(0);
+      setHint(null);
+      await playAudio('success-sound.mp3');
+      if (!tutorialPlayed.success) {
+        await playAudio('success-tutorial.mp3');
+        setTutorialPlayed(prev => ({ ...prev, success: true }));
+      }
+    } else {
+      setScore(prev => prev - 1);
+      const newStreak = incorrectStreak + 1;
+      setIncorrectStreak(newStreak);
+      await playAudio('failure-sound.mp3');
+      if (!tutorialPlayed.failure) {
+        await playAudio('failure-tutorial.mp3');
+        setTutorialPlayed(prev => ({ ...prev, failure: true }));
+      }
+      if (newStreak >= 3) {
+        setHint(currentCall.correctDispatch);
+      }
+    }
+
+    startNextCall();
+  };
+
+  const handleScreenTap = (event) => {
+    if (gameState === 'waiting') {
+      startGame();
+      return; // Exit early after starting the game
+    }
+
+    if (gameState === 'playing') {
+      let tapX, tapY;
+      if (event.touches) {
+        tapX = event.touches.clientX;
+        tapY = event.touches.clientY;
+      } else {
+        tapX = event.clientX;
+        tapY = event.clientY;
+      }
+
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+      const isTopHalf = tapY < screenHeight / 2;
+      const isLeftHalf = tapX < screenWidth / 2;
+
+      if (isTopHalf && isLeftHalf) {
+        handleDispatch('police');
+      } else if (isTopHalf && !isLeftHalf) {
+        handleDispatch('fire');
+      } else if (!isTopHalf && isLeftHalf) {
+        handleDispatch('ems');
+      } else {
+        handleDispatch('prank');
+      }
+    } else { // gameState === 'ended'
+      console.log('Restarting game...');
+      setGameState('waiting');
+    }
+  };
+
+  return (
+    <main
+      onClick={handleScreenTap}
+      onTouchStart={handleScreenTap}
+      style={{
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'black',
+        color: 'white',
+        cursor: 'pointer',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        textAlign: 'center',
+      }}
+    >
+      {gameState === 'waiting' && (
+        <div>
+          <h1>Blind Dispatch</h1>
+          <p>Tap anywhere to start your shift.</p>
+        </div>
+      )}
+      {gameState === 'playing' && (
+        <div>
+          {hint && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              fontSize: '4rem',
+              opacity: 0.2,
+              animation: 'fadeInOut 2s ease-in-out infinite'
+            }}>
+              {hint === 'police' && '👮'}
+              {hint === 'fire' && '🔥'}
+              {hint === 'ems' && '🚑'}
+              {hint === 'prank' && '😜'}
+            </div>
+          )}
+        </div>
+      )}
+      {gameState === 'ended' && (
+        <div>
+          <h1>Shift Over</h1>
+          <p>Your final score: {score}</p>
+          <p>Tap to play again.</p>
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+</files>

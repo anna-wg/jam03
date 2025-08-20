@@ -1,1 +1,56 @@
+.main {
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
 
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  font-size: 2rem;
+}
+
+.score {
+  /* Left aligned */
+}
+
+.timer {
+  /* Right aligned */
+}
+
+.quadrantContainer {
+  flex-grow: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.quadrant {
+  border: 1px solid white;
+  transition: background-color 0.1s ease;
+}
+
+.quadrant:active {
+  background-color: #333;
+}
+
+.topLeft {
+  background-color: #00008B; /* Dark Blue for Police */
+}
+
+.topRight {
+  background-color: #8B0000; /* Dark Red for Fire */
+}
+
+.bottomLeft {
+  background-color: #F5F5DC; /* Beige for Ambulance */
+}
+
+.bottomRight {
+  background-color: #808080; /* Grey for Reject */
+}
