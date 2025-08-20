@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
+import { repoName } from './lib/repoName.js'
+
+// Replace with the actual repository name
+
 const nextConfig = {
+  basePath: `/${repoName}`,
+  assetPrefix: `/${repoName}/`,
+  output: 'export',
   images: {
     unoptimized: true, // Required for static export
   },
