@@ -353,6 +353,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setTimeout(() => {
       playAudioSequence(['game-over.wav']);
     }, 100);
+
+
+    
   };
 
   const handleSkipAudio = () => {
@@ -808,7 +811,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       <h1 style={{
         fontSize: '3rem',
         marginBottom: '1rem',
-        color: '#FFD700'
+        color: '#FFFFFF'
       }}>
         SHIFT COMPLETE
       </h1>
@@ -817,7 +820,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
         fontSize: '2.5rem',
         fontWeight: 'bold',
         marginBottom: '2rem',
-        color: score >= 0 ? '#00FF00' : '#FF4444'
+        color: '#FFFFFF'
       }}>
         Final Score: {score}
       </div>
@@ -829,56 +832,27 @@ const audioContextRef = useRef<AudioContext | null>(null);
         width: '100%',
         marginBottom: '2rem'
       }}>
-        {/* Performance Summary */}
-        <div style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-          padding: '20px',
-          borderRadius: '10px',
-          border: '2px solid #FFD700'
-        }}>
-          <h3 style={{
-            fontSize: '1.5rem',
-            marginBottom: '15px',
-            color: '#FFD700'
-          }}>
-            PERFORMANCE
-          </h3>
-          <div style={{ fontSize: '1.2rem', marginBottom: '10px' }}>
-            Accuracy: <span style={{ color: '#00FF00' }}>{calculateAccuracy()}%</span>
-          </div>
-          <div style={{
-            fontSize: '1.4rem',
-            fontWeight: 'bold',
-            color: getPerformanceRating() === 'EXCELLENT' ? '#00FF00' :
-                   getPerformanceRating() === 'GOOD' ? '#90EE90' :
-                   getPerformanceRating() === 'FAIR' ? '#FFFF00' :
-                   getPerformanceRating() === 'NEEDS IMPROVEMENT' ? '#FFA500' : '#FF4444'
-          }}>
-            {getPerformanceRating()}
-          </div>
-        </div>
-
         {/* Call Statistics */}
         <div style={{
           backgroundColor: 'rgba(255, 255, 255, 0.1)',
           padding: '20px',
           borderRadius: '10px',
-          border: '2px solid #4169E1'
+          border: '2px solid #FFFFFF'
         }}>
           <h3 style={{
             fontSize: '1.5rem',
             marginBottom: '15px',
-            color: '#4169E1'
+            color: '#FFFFFF'
           }}>
             CALL STATISTICS
           </h3>
           <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
             <div>Total Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.totalCalls}</span></div>
-            <div>Correct Dispatches: <span style={{ color: '#00FF00' }}>{gameStats.correctDispatches}</span></div>
-            <div>Incorrect Dispatches: <span style={{ color: '#FF4444' }}>{gameStats.incorrectDispatches}</span></div>
-            <div>Calls Rejected: <span style={{ color: '#FFFF00' }}>{gameStats.callsRejected}</span></div>
-            <div>Correct Rejections: <span style={{ color: '#00FF00' }}>{gameStats.correctRejections}</span></div>
-            <div>Incorrect Rejections: <span style={{ color: '#FF4444' }}>{gameStats.incorrectRejections}</span></div>
+            <div>Correct Dispatches: <span style={{ color: '#FFFFFF' }}>{gameStats.correctDispatches}</span></div>
+            <div>Incorrect Dispatches: <span style={{ color: '#FFFFFF' }}>{gameStats.incorrectDispatches}</span></div>
+            <div>Calls Rejected: <span style={{ color: '#FFFFFF' }}>{gameStats.callsRejected}</span></div>
+            <div>Correct Rejections: <span style={{ color: '#FFFFFF' }}>{gameStats.correctRejections}</span></div>
+            <div>Incorrect Rejections: <span style={{ color: '#FFFFFF' }}>{gameStats.incorrectRejections}</span></div>
           </div>
         </div>
 
@@ -887,20 +861,20 @@ const audioContextRef = useRef<AudioContext | null>(null);
           backgroundColor: 'rgba(255, 255, 255, 0.1)',
           padding: '20px',
           borderRadius: '10px',
-          border: '2px solid #32CD32'
+          border: '2px solid #FFFFFF'
         }}>
           <h3 style={{
             fontSize: '1.5rem',
             marginBottom: '15px',
-            color: '#32CD32'
+            color: '#FFFFFF'
           }}>
             CALL TYPES
           </h3>
           <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
-            <div>Police Calls: <span style={{ color: '#4169E1' }}>{gameStats.policeCallsHandled}</span></div>
-            <div>Fire Calls: <span style={{ color: '#FF4444' }}>{gameStats.fireCallsHandled}</span></div>
+            <div>Police Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.policeCallsHandled}</span></div>
+            <div>Fire Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.fireCallsHandled}</span></div>
             <div>Medical Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.ambulanceCallsHandled}</span></div>
-            <div>Prank Calls: <span style={{ color: '#808080' }}>{gameStats.prankCallsHandled}</span></div>
+            <div>Prank Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.prankCallsHandled}</span></div>
           </div>
         </div>
       </div>
@@ -908,7 +882,8 @@ const audioContextRef = useRef<AudioContext | null>(null);
       <div style={{
         fontSize: '1.2rem',
         opacity: 0.8,
-        marginTop: '1rem'
+        marginTop: '1rem',
+        color: '#FFFFFF'
       }}>
         Click anywhere to start a new shift
       </div>
@@ -934,7 +909,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
         touchAction: 'none'
       }}
     >
-      {gameStarted && (
+      {debugMode && gameStarted && (
         <button
           onClick={handleSkipAudio}
           style={{
@@ -1172,4 +1147,5 @@ const audioContextRef = useRef<AudioContext | null>(null);
     </main>
   );
 }
+
 
