@@ -381,7 +381,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    playAudioSequence(['click_sound.mp3', `${vehicle}-selected.wav`], () => {
+    // Play appropriate sound based on vehicle selection
+    const vehicleSound = vehicle === 'reject' ? 'call-ignored.mp3' : `${vehicle}.wav`;
+    playAudioSequence([vehicleSound], () => {
       if (vehicle === 'reject') {
         // Update statistics for rejection
         setGameStats(prev => ({
