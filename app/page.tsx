@@ -7,16 +7,28 @@ import { getAssetPath } from '../lib/utils';
 type GameState = 0 | 1 | 2; // STATE 0: no input, STATE 1: waiting for vehicle, STATE 2: waiting for district
 
 // Define vehicle types
-type VehicleType = 'police' | 'fire' | 'ambulance' | 'reject';
+type VehicleType = 'firetruck' | 'police' | 'ambulance';
+type SelectableVehicleType = VehicleType | 'reject';
 
 // Define districts
-type District = 'north' | 'south' | 'east' | 'west';
+type District = 'North' | 'South' | 'East' | 'West';
+
+// Define vehicle status
+type VehicleStatus = 'available' | 'in-transit' | 'on-call';
+
+// Define the structure for a vehicle
+interface Vehicle {
+  id: number;
+  type: VehicleType;
+  district: District;
+  status: VehicleStatus;
+}
 
 // Define the structure for a call scenario
 interface CallScenario {
   id: number;
   audioFile: string;
-  correctDispatch: VehicleType;
+  correctDispatch: 'police' | 'fire' | 'ambulance' | 'reject';
 }
 
 const allCalls: CallScenario[] = [
@@ -29,16 +41,81 @@ const allCalls: CallScenario[] = [
   { id: 7, audioFile: 'prank-call-2.mp3', correctDispatch: 'reject' },
 ];
 
-export default function BlindDispatch() {
-  const [gameStarted, setGameStarted] = useState(false);
-  const [gameState, setGameState] = useState<GameState>(0);
-  const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
-  const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleType | null>(null);
-  const [debugMode, setDebugMode] = useState(false);
+const districts: District[] = ['North', 'South', 'East', 'West'];
+const getRandomDistrict = () => districts[Math.floor(Math.random() * districts.length)];
+
+// Function to create initial fleet with random placement
+const createInitialFleet = (): Vehicle[] => [
+  { id: 1, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
+  { id: 2, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
+  { id: 3, type: 'police', district: getRandomDistrict(), status: 'available' },
+  { id: 4, type: 'police', district: getRandomDistrict(), status: 'available' },
+  { id: 5, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
+  { id: 6, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
+];
+
+// Transit time calculation (15 seconds per district away)
+const getTransitTime = (start: District, end: District): number => {
+  if (start === end) return 0;
   
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const distances: Record<District, Record<District, number>> = {
+    North: { North: 0, South: 2, East: 1, West: 1 },
+    South: { North: 2, South: 0, East: 1, West: 1 },
+    East: { West: 2, North: 1, South: 1, East: 0 },
+    West: { East: 2, North: 1, South: 1, West: 0 },
+  };
+  
+  return (distances[start][end] || 0) * 15000; // in milliseconds
+};
+
+// Call duration based on call type (in milliseconds)
+const getCallDuration = (callType: string): number => {
+  const durations: Record<string, number> = {
+    'police': 45000,    // 45 seconds
+    'fire': 60000,      // 60 seconds
+    'ambulance': 30000, // 30 seconds
+    'reject': 0,        // No duration for rejected calls
+  };
+  return durations[callType] || 30000;
+};
+
+// Game statistics interface
+interface GameStats {
+  totalCalls: number;
+  correctDispatches: number;
+  incorrectDispatches: number;
+  callsRejected: number;
+  correctRejections: number;
+  incorrectRejections: number;
+  policeCallsHandled: number;
+  fireCallsHandled: number;
+  ambulanceCallsHandled: number;
+  prankCallsHandled: number;
+}
+
+export default function BlindDispatch() {
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+const [gameStarted, setGameStarted] = useState(false);
+const [gameState, setGameState] = useState<GameState>(0);
+const [score, setScore] = useState(0);
+const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
+const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
+const [debugMode, setDebugMode] = useState(false);
+const [gameStats, setGameStats] = useState<GameStats>({
+  totalCalls: 0,
+  correctDispatches: 0,
+  incorrectDispatches: 0,
+  callsRejected: 0,
+  correctRejections: 0,
+  incorrectRejections: 0,
+  policeCallsHandled: 0,
+  fireCallsHandled: 0,
+  ambulanceCallsHandled: 0,
+  prankCallsHandled: 0,
+});
+
+const audioContextRef = useRef<AudioContext | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
@@ -46,19 +123,40 @@ export default function BlindDispatch() {
   // Keyboard event handler for testing
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
+      console.log('Key pressed:', event.key, 'Game state:', gameState);
       if (gameState === 2) {
         switch (event.key) {
           case 'ArrowUp':
-            handleDistrictSelection('north');
+            console.log('Selecting North district');
+            handleDistrictSelection('North');
             break;
           case 'ArrowDown':
-            handleDistrictSelection('south');
+            console.log('Selecting South district');
+            handleDistrictSelection('South');
             break;
           case 'ArrowLeft':
-            handleDistrictSelection('west');
+            console.log('Selecting West district');
+            handleDistrictSelection('West');
             break;
           case 'ArrowRight':
-            handleDistrictSelection('east');
+            console.log('Selecting East district');
+            handleDistrictSelection('East');
+            break;
+          case '1':
+            console.log('Debug: Selecting North district');
+            handleDistrictSelection('North');
+            break;
+          case '2':
+            console.log('Debug: Selecting South district');
+            handleDistrictSelection('South');
+            break;
+          case '3':
+            console.log('Debug: Selecting West district');
+            handleDistrictSelection('West');
+            break;
+          case '4':
+            console.log('Debug: Selecting East district');
+            handleDistrictSelection('East');
             break;
         }
       }
@@ -82,12 +180,16 @@ export default function BlindDispatch() {
 
   const playAudio = (audioFile: string): Promise<void> => {
     return new Promise(async (resolve, reject) => {
-      if (!audioContextRef.current) return reject('Audio context not ready');
+      if (!audioContextRef.current) {
+        console.warn('Audio context not ready, skipping playback.');
+        return resolve(); // Resolve immediately if context is not ready
+      }
 
       const audioPath = getAssetPath(`/audio/${audioFile}`);
       try {
         const response = await fetch(audioPath);
         if (!response.ok) {
+          console.error(`Failed to fetch audio file: ${audioFile}`);
           return reject(`Failed to fetch audio file: ${audioFile}`);
         }
         const arrayBuffer = await response.arrayBuffer();
@@ -104,6 +206,37 @@ export default function BlindDispatch() {
     });
   };
 
+  const audioQueueRef = useRef<string[][]>([]);
+  const isPlayingAudioRef = useRef(false);
+
+  const playAudioSequence = (audioFiles: string[]) => {
+    audioQueueRef.current.push(audioFiles);
+    processAudioQueue();
+  };
+
+  const processAudioQueue = async () => {
+    if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) {
+      return;
+    }
+
+    isPlayingAudioRef.current = true;
+    const audioFiles = audioQueueRef.current.shift();
+
+    if (audioFiles) {
+      for (const audioFile of audioFiles) {
+        try {
+          await playAudio(audioFile);
+        } catch (error) {
+          console.error('Error playing audio sequence:', error);
+          break;
+        }
+      }
+    }
+
+    isPlayingAudioRef.current = false;
+    processAudioQueue();
+  };
+
   const startGame = async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -113,13 +246,41 @@ export default function BlindDispatch() {
       await audioContextRef.current.resume();
     }
 
+    // Initialize new fleet with random placement
+    const newFleet = createInitialFleet();
+    setVehicles(newFleet);
     setGameStarted(true);
     setScore(0);
     setTimeLeft(300);
     
-    // Play game start audio and then start first call
-    await playAudio('game-start.wav');
-    startNextCall();
+    // Reset game statistics
+    setGameStats({
+      totalCalls: 0,
+      correctDispatches: 0,
+      incorrectDispatches: 0,
+      callsRejected: 0,
+      correctRejections: 0,
+      incorrectRejections: 0,
+      policeCallsHandled: 0,
+      fireCallsHandled: 0,
+      ambulanceCallsHandled: 0,
+      prankCallsHandled: 0,
+    });
+    
+    // Create a single audio sequence for all vehicle announcements
+    const vehicleAnnouncements: string[] = [];
+    newFleet.forEach(vehicle => {
+      const districtAudio = `${vehicle.district.toLowerCase()}_district.wav`;
+      vehicleAnnouncements.push(`${vehicle.type}.wav`, 'located_in.wav', districtAudio);
+    });
+
+    // Play game start audio, then vehicle announcements, then start first call
+    playAudioSequence(['game-start.wav', ...vehicleAnnouncements]);
+    
+    // Start the first call after a delay to ensure audio sequence completes
+    setTimeout(() => {
+      startNextCall();
+    }, (vehicleAnnouncements.length + 1) * 1500); // Rough estimate of audio duration
   };
 
   const startNextCall = () => {
@@ -129,51 +290,143 @@ export default function BlindDispatch() {
     setSelectedVehicle(null);
     setGameState(0); // STATE 0: no input during call audio
     
-    setTimeout(async () => {
-      await playAudio(nextCall.audioFile);
-      setGameState(1); // STATE 1: waiting for vehicle selection
+    // Use the audio queue system and wait for completion
+    setTimeout(() => {
+      playAudioSequence([nextCall.audioFile]);
+      // Set state to 1 after audio completes (estimate based on typical call duration)
+      setTimeout(() => {
+        setGameState(1); // STATE 1: waiting for vehicle selection
+      }, 4000); // Rough estimate for call audio duration
     }, 1000);
   };
 
-  const endGame = async () => {
+  const endGame = () => {
     setGameStarted(false);
     setGameState(0);
-    await playAudio('game-over.wav');
+    playAudioSequence(['game-over.wav']);
   };
 
-  const handleVehicleSelection = async (vehicle: VehicleType) => {
+  const handleVehicleSelection = (vehicle: SelectableVehicleType) => {
     if (gameState !== 1) return;
 
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    // Play vehicle selection audio
-    await playAudio(`${vehicle}-selected.wav`);
+    // Use audio queue system instead of direct playAudio
+    playAudioSequence([`${vehicle}-selected.wav`]);
     
     if (vehicle === 'reject') {
+      // Update statistics for rejection
+      setGameStats(prev => ({
+        ...prev,
+        totalCalls: prev.totalCalls + 1,
+        callsRejected: prev.callsRejected + 1,
+        correctRejections: currentCall?.correctDispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
+        incorrectRejections: currentCall?.correctDispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
+        prankCallsHandled: currentCall?.correctDispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
+      }));
+      
       // If call is rejected, go back to STATE 0 and start next call
       setScore(prev => prev + (currentCall?.correctDispatch === 'reject' ? 1 : -1));
-      startNextCall();
+      setTimeout(() => {
+        startNextCall();
+      }, 1500); // Wait for selection audio to complete
     } else {
-      // Go to STATE 2: waiting for district selection
-      setGameState(2);
+      // Go to STATE 2: waiting for district selection after audio completes
+      setTimeout(() => {
+        setGameState(2);
+      }, 1500); // Wait for selection audio to complete
     }
   };
 
-  const handleDistrictSelection = async (district: District) => {
-    if (gameState !== 2 || !selectedVehicle) return;
+  // Vehicle dispatch function with status management
+  const dispatchVehicle = (vehicle: Vehicle, targetDistrict: District, callType: string) => {
+    const transitTime = getTransitTime(vehicle.district, targetDistrict);
+    const callDuration = getCallDuration(callType);
+    
+    // Update vehicle status to in-transit
+    setVehicles(prev => prev.map(v =>
+      v.id === vehicle.id ? { ...v, status: 'in-transit' } : v
+    ));
+
+    // After transit time, update to on-call and move to target district
+    setTimeout(() => {
+      setVehicles(prev => prev.map(v =>
+        v.id === vehicle.id ? {
+          ...v,
+          status: 'on-call',
+          district: targetDistrict
+        } : v
+      ));
+
+      // After call duration, return to available status
+      setTimeout(() => {
+        setVehicles(prev => prev.map(v =>
+          v.id === vehicle.id ? { ...v, status: 'available' } : v
+        ));
+      }, callDuration);
+    }, transitTime);
+  };
+
+  const handleDistrictSelection = (district: District) => {
+    if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject') return;
 
     setGameState(0); // STATE 0: no input during audio feedback
-    
-    // Play district selection audio
-    await playAudio(`${district}-selected.wav`);
-    
-    // For now, always dispatch successfully (vehicle tracking will be added later)
-    const isCorrectVehicle = selectedVehicle === currentCall?.correctDispatch;
-    setScore(prev => prev + (isCorrectVehicle ? 1 : -1));
-    
-    // Start next call
-    startNextCall();
+
+    // Find available vehicles of the selected type
+    const availableVehicles = vehicles.filter(
+      (v) => v.type === selectedVehicle && v.status === 'available'
+    );
+
+    if (availableVehicles.length > 0) {
+      // Find the closest available vehicle to the target district
+      let closestVehicle = availableVehicles[0];
+      let shortestTime = getTransitTime(availableVehicles[0].district, district);
+
+      for (const vehicle of availableVehicles) {
+        const transitTime = getTransitTime(vehicle.district, district);
+        if (transitTime < shortestTime) {
+          shortestTime = transitTime;
+          closestVehicle = vehicle;
+        }
+      }
+
+      // Play dispatch confirmation audio
+      const districtAudio = `${district.toLowerCase()}_district.wav`;
+      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio]);
+
+      // Dispatch the vehicle
+      const callType = currentCall?.correctDispatch === 'fire' ? 'fire' :
+                      currentCall?.correctDispatch === 'ambulance' ? 'ambulance' : 'police';
+      dispatchVehicle(closestVehicle, district, callType);
+
+      // Check if correct vehicle type was selected
+      const isCorrectVehicle = selectedVehicle === currentCall?.correctDispatch;
+      setScore(prev => prev + (isCorrectVehicle ? 1 : -1));
+      
+      // Update statistics for dispatch
+      setGameStats(prev => ({
+        ...prev,
+        totalCalls: prev.totalCalls + 1,
+        correctDispatches: isCorrectVehicle ? prev.correctDispatches + 1 : prev.correctDispatches,
+        incorrectDispatches: !isCorrectVehicle ? prev.incorrectDispatches + 1 : prev.incorrectDispatches,
+        policeCallsHandled: currentCall?.correctDispatch === 'police' ? prev.policeCallsHandled + 1 : prev.policeCallsHandled,
+        fireCallsHandled: currentCall?.correctDispatch === 'fire' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
+        ambulanceCallsHandled: currentCall?.correctDispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
+      }));
+      
+      // Start next call
+      startNextCall();
+    } else {
+      // No vehicle available - play appropriate audio and return to vehicle selection
+      const vehicleType = selectedVehicle === 'firetruck' ? 'fire' :
+                         selectedVehicle === 'ambulance' ? 'ambulance' : 'police';
+      const districtName = district.toLowerCase();
+      playAudioSequence([`no-${vehicleType}-${districtName}.mp3`]);
+      
+      // Return to STATE 1 (vehicle selection) instead of STATE 0
+      setGameState(1);
+    }
   };
 
   const handleQuadrantTap = (event: React.MouseEvent | React.TouchEvent) => {
@@ -196,7 +449,7 @@ export default function BlindDispatch() {
     if (isTopHalf && isLeftHalf) {
       handleVehicleSelection('police');
     } else if (isTopHalf && !isLeftHalf) {
-      handleVehicleSelection('fire');
+      handleVehicleSelection('firetruck');
     } else if (!isTopHalf && isLeftHalf) {
       handleVehicleSelection('ambulance');
     } else {
@@ -227,16 +480,16 @@ export default function BlindDispatch() {
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
       // Horizontal swipe
       if (deltaX > 0) {
-        handleDistrictSelection('east');
+        handleDistrictSelection('East');
       } else {
-        handleDistrictSelection('west');
+        handleDistrictSelection('West');
       }
     } else if (Math.abs(deltaY) > minSwipeDistance) {
       // Vertical swipe
       if (deltaY > 0) {
-        handleDistrictSelection('south');
+        handleDistrictSelection('South');
       } else {
-        handleDistrictSelection('north');
+        handleDistrictSelection('North');
       }
     }
 
@@ -276,16 +529,16 @@ export default function BlindDispatch() {
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
         // Horizontal swipe
         if (deltaX > 0) {
-          handleDistrictSelection('east');
+          handleDistrictSelection('East');
         } else {
-          handleDistrictSelection('west');
+          handleDistrictSelection('West');
         }
       } else if (Math.abs(deltaY) > minSwipeDistance) {
         // Vertical swipe
         if (deltaY > 0) {
-          handleDistrictSelection('south');
+          handleDistrictSelection('South');
         } else {
-          handleDistrictSelection('north');
+          handleDistrictSelection('North');
         }
       }
 
@@ -326,6 +579,141 @@ export default function BlindDispatch() {
     return '';
   };
 
+  const calculateAccuracy = (): number => {
+    const totalAttempts = gameStats.correctDispatches + gameStats.incorrectDispatches + gameStats.correctRejections + gameStats.incorrectRejections;
+    if (totalAttempts === 0) return 0;
+    return Math.round(((gameStats.correctDispatches + gameStats.correctRejections) / totalAttempts) * 100);
+  };
+
+  const getPerformanceRating = (): string => {
+    const accuracy = calculateAccuracy();
+    if (accuracy >= 90) return 'EXCELLENT';
+    if (accuracy >= 80) return 'GOOD';
+    if (accuracy >= 70) return 'FAIR';
+    if (accuracy >= 60) return 'NEEDS IMPROVEMENT';
+    return 'POOR';
+  };
+
+  const ScoreBoard = () => (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      textAlign: 'center',
+      maxWidth: '800px',
+      margin: '0 auto',
+      padding: '20px'
+    }}>
+      <h1 style={{
+        fontSize: '3rem',
+        marginBottom: '1rem',
+        color: '#FFD700'
+      }}>
+        SHIFT COMPLETE
+      </h1>
+      
+      <div style={{
+        fontSize: '2.5rem',
+        fontWeight: 'bold',
+        marginBottom: '2rem',
+        color: score >= 0 ? '#00FF00' : '#FF4444'
+      }}>
+        Final Score: {score}
+      </div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+        gap: '20px',
+        width: '100%',
+        marginBottom: '2rem'
+      }}>
+        {/* Performance Summary */}
+        <div style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          padding: '20px',
+          borderRadius: '10px',
+          border: '2px solid #FFD700'
+        }}>
+          <h3 style={{
+            fontSize: '1.5rem',
+            marginBottom: '15px',
+            color: '#FFD700'
+          }}>
+            PERFORMANCE
+          </h3>
+          <div style={{ fontSize: '1.2rem', marginBottom: '10px' }}>
+            Accuracy: <span style={{ color: '#00FF00' }}>{calculateAccuracy()}%</span>
+          </div>
+          <div style={{
+            fontSize: '1.4rem',
+            fontWeight: 'bold',
+            color: getPerformanceRating() === 'EXCELLENT' ? '#00FF00' :
+                   getPerformanceRating() === 'GOOD' ? '#90EE90' :
+                   getPerformanceRating() === 'FAIR' ? '#FFFF00' :
+                   getPerformanceRating() === 'NEEDS IMPROVEMENT' ? '#FFA500' : '#FF4444'
+          }}>
+            {getPerformanceRating()}
+          </div>
+        </div>
+
+        {/* Call Statistics */}
+        <div style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          padding: '20px',
+          borderRadius: '10px',
+          border: '2px solid #4169E1'
+        }}>
+          <h3 style={{
+            fontSize: '1.5rem',
+            marginBottom: '15px',
+            color: '#4169E1'
+          }}>
+            CALL STATISTICS
+          </h3>
+          <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
+            <div>Total Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.totalCalls}</span></div>
+            <div>Correct Dispatches: <span style={{ color: '#00FF00' }}>{gameStats.correctDispatches}</span></div>
+            <div>Incorrect Dispatches: <span style={{ color: '#FF4444' }}>{gameStats.incorrectDispatches}</span></div>
+            <div>Calls Rejected: <span style={{ color: '#FFFF00' }}>{gameStats.callsRejected}</span></div>
+            <div>Correct Rejections: <span style={{ color: '#00FF00' }}>{gameStats.correctRejections}</span></div>
+            <div>Incorrect Rejections: <span style={{ color: '#FF4444' }}>{gameStats.incorrectRejections}</span></div>
+          </div>
+        </div>
+
+        {/* Call Type Breakdown */}
+        <div style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          padding: '20px',
+          borderRadius: '10px',
+          border: '2px solid #32CD32'
+        }}>
+          <h3 style={{
+            fontSize: '1.5rem',
+            marginBottom: '15px',
+            color: '#32CD32'
+          }}>
+            CALL TYPES
+          </h3>
+          <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
+            <div>Police Calls: <span style={{ color: '#4169E1' }}>{gameStats.policeCallsHandled}</span></div>
+            <div>Fire Calls: <span style={{ color: '#FF4444' }}>{gameStats.fireCallsHandled}</span></div>
+            <div>Medical Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.ambulanceCallsHandled}</span></div>
+            <div>Prank Calls: <span style={{ color: '#808080' }}>{gameStats.prankCallsHandled}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        fontSize: '1.2rem',
+        opacity: 0.8,
+        marginTop: '1rem'
+      }}>
+        Refresh the page to start a new shift
+      </div>
+    </div>
+  );
+
   return (
     <main
       onMouseDown={handleMouseDown}
@@ -360,7 +748,7 @@ export default function BlindDispatch() {
           cursor: 'pointer'
         }}
       >
-        Toggle UI
+        Debug
       </button>
       {!debugMode && (
         <>
@@ -388,15 +776,11 @@ export default function BlindDispatch() {
           }}>
             {!gameStarted ? (
               <div>
-                <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Dispatch</h1>
-                <p style={{ fontSize: '1.5rem' }}>Tap anywhere to start your shift</p>
+                <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Blind Dispatch</h1>
+                <p style={{ fontSize: '1.5rem' }}>Click anywhere to start your shift...</p>
               </div>
             ) : timeLeft === 0 ? (
-              <div>
-                <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Shift Over</h1>
-                <p style={{ fontSize: '2rem', marginBottom: '1rem' }}>Final Score: {score}</p>
-                <p style={{ fontSize: '1.5rem' }}>Refresh to play again</p>
-              </div>
+              <ScoreBoard />
             ) : (
               <div>
                 <p style={{ fontSize: '1.5rem', opacity: 0.7 }}>{getStateDescription()}</p>
@@ -468,6 +852,46 @@ export default function BlindDispatch() {
             </div>
           )}
         </>
+      )}
+      
+      {/* Debug panel showing vehicle status */}
+      {!debugMode && gameStarted && (
+        <div style={{
+          position: 'absolute',
+          top: '120px',
+          right: '20px',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          color: 'white',
+          padding: '20px',
+          borderRadius: '10px',
+          fontSize: '12px',
+          maxWidth: '300px',
+          zIndex: 1000
+        }}>
+          <h3 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Fleet Status</h3>
+          {vehicles.map(vehicle => (
+            <div key={vehicle.id} style={{
+              marginBottom: '8px',
+              padding: '5px',
+              backgroundColor: vehicle.status === 'available' ? 'rgba(0, 255, 0, 0.2)' :
+                              vehicle.status === 'in-transit' ? 'rgba(255, 255, 0, 0.2)' :
+                              'rgba(255, 0, 0, 0.2)',
+              borderRadius: '3px'
+            }}>
+              <div><strong>{vehicle.type.toUpperCase()} #{vehicle.id}</strong></div>
+              <div>District: {vehicle.district}</div>
+              <div>Status: {vehicle.status}</div>
+            </div>
+          ))}
+          {gameStarted && (
+            <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #333' }}>
+              <div><strong>Current Call:</strong></div>
+              <div>Type: {currentCall?.correctDispatch || 'None'}</div>
+              <div>Selected: {selectedVehicle || 'None'}</div>
+              <div>State: {gameState}</div>
+            </div>
+          )}
+        </div>
       )}
     </main>
   );
