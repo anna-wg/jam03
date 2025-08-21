@@ -62,12 +62,12 @@ const getTransitTime = (start: District, end: District): number => {
 // Call duration based on call type (in milliseconds)
 const getCallDuration = (callType: string): number => {
   const durations: Record<string, number> = {
-    'police': 45000,    // 45 seconds
-    'fire': 60000,      // 60 seconds
-    'ambulance': 30000, // 30 seconds
+    'police': 15000,    // 15 seconds
+    'fire': 15000,      // 15 seconds
+    'ambulance': 15000, // 15 seconds
     'reject': 0,        // No duration for rejected calls
   };
-  return durations[callType] || 30000;
+  return durations[callType] || 15000;
 };
 
 // Game statistics interface
@@ -84,16 +84,25 @@ interface GameStats {
   prankCallsHandled: number;
 }
 
+// Define the structure for a score event
+interface ScoreEvent {
+  message: string;
+  amount: number;
+  timestamp: number;
+}
+
 export default function BlindDispatch() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [allCalls, setAllCalls] = useState<CallScenario[]>([]);
   const [gameStarted, setGameStarted] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
   const [gameState, setGameState] = useState<GameState>(0);
   const [score, setScore] = useState(0);
+  const [scoreEvents, setScoreEvents] = useState<ScoreEvent[]>([]);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(true);
   const [gameStats, setGameStats] = useState<GameStats>({
   totalCalls: 0,
   correctDispatches: 0,
@@ -108,9 +117,16 @@ export default function BlindDispatch() {
 });
 
 const audioContextRef = useRef<AudioContext | null>(null);
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const isSkippingRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
+
+  const addScoreEvent = (message: string, amount: number) => {
+    setScore(prev => prev + amount);
+    setScoreEvents(prev => [...prev, { message, amount, timestamp: Date.now() }]);
+  };
 
   useEffect(() => {
     const fetchCalls = async () => {
@@ -162,10 +178,16 @@ const audioContextRef = useRef<AudioContext | null>(null);
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
         const source = audioContextRef.current.createBufferSource();
+        currentAudioSourceRef.current = source;
         source.buffer = audioBuffer;
         source.connect(audioContextRef.current.destination);
         source.start(0);
-        source.onended = () => resolve();
+        source.onended = () => {
+          if (currentAudioSourceRef.current === source) {
+            currentAudioSourceRef.current = null;
+          }
+          resolve();
+        };
       } catch (error) {
         console.error(`Failed to play audio file: ${audioFile}`, error);
         reject(error);
@@ -173,11 +195,11 @@ const audioContextRef = useRef<AudioContext | null>(null);
     });
   };
 
-  const audioQueueRef = useRef<string[][]>([]);
+  const audioQueueRef = useRef<{ files: string[]; onComplete?: () => void }[]>([]);
   const isPlayingAudioRef = useRef(false);
 
-  const playAudioSequence = (audioFiles: string[]) => {
-    audioQueueRef.current.push(audioFiles);
+  const playAudioSequence = (audioFiles: string[], onComplete?: () => void) => {
+    audioQueueRef.current.push({ files: audioFiles, onComplete });
     processAudioQueue();
   };
 
@@ -187,16 +209,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
     }
 
     isPlayingAudioRef.current = true;
-    const audioFiles = audioQueueRef.current.shift();
+    const sequence = audioQueueRef.current.shift();
 
-    if (audioFiles) {
-      for (const audioFile of audioFiles) {
+    if (sequence) {
+      isSkippingRef.current = false; // Reset for the new sequence
+      for (const audioFile of sequence.files) {
+        if (isSkippingRef.current) {
+          break;
+        }
         try {
           await playAudio(audioFile);
         } catch (error) {
           console.error('Error playing audio sequence:', error);
           break;
         }
+      }
+      
+      if (sequence.onComplete) {
+        sequence.onComplete();
       }
     }
 
@@ -213,6 +243,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       await audioContextRef.current.resume();
     }
 
+    setGameState(0); // Set to 0 to prevent input during intro
     // Initialize new fleet with random placement
     const newFleet = createInitialFleet();
     setVehicles(newFleet);
@@ -225,7 +256,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setAllCalls(randomizedCalls);
 
     setGameStarted(true);
+    setGameOver(false);
     setScore(0);
+    setScoreEvents([]);
     setTimeLeft(300);
     
     // Reset game statistics
@@ -246,16 +279,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
     const vehicleAnnouncements: string[] = [];
     newFleet.forEach(vehicle => {
       const districtAudio = `${vehicle.district.toLowerCase()}_district.wav`;
-      vehicleAnnouncements.push(`${vehicle.type}.wav`, 'located_in.wav', districtAudio);
+      const vehicleAudio = `${vehicle.type}.wav`;
+      vehicleAnnouncements.push(vehicleAudio, 'located_in.wav', districtAudio);
     });
 
     // Play game start audio, then vehicle announcements, then start first call
-    playAudioSequence(['game-start.wav', ...vehicleAnnouncements]);
-    
-    // Start the first call after a delay to ensure audio sequence completes
-    setTimeout(() => {
+    playAudioSequence(['tutorial.mp3', ...vehicleAnnouncements], () => {
       startNextCall();
-    }, (vehicleAnnouncements.length + 1) * 1500); // Rough estimate of audio duration
+    });
   };
 
   const startNextCall = () => {
@@ -271,18 +302,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
     
     // Use the audio queue system and wait for completion
     setTimeout(() => {
-      playAudioSequence([nextCall.audio_file_name]);
-      // Set state to 1 after audio completes (estimate based on typical call duration)
-      setTimeout(() => {
+      const districtAudio = `${nextCall.district_location.toLowerCase()}_district.wav`;
+      playAudioSequence(['incoming-call-from.mp3', districtAudio, 'phone_ringing_short.mp3', 'call-pickup.mp3', nextCall.audio_file_name, 'call-hangup.mp3'], () => {
         setGameState(1); // STATE 1: waiting for vehicle selection
-      }, 4000); // Rough estimate for call audio duration
+      });
     }, 1000);
   };
 
   const endGame = () => {
-    setGameStarted(false);
+    setGameOver(true);
     setGameState(0);
     playAudioSequence(['game-over.wav']);
+  };
+
+  const handleSkipAudio = () => {
+    isSkippingRef.current = true;
+    if (currentAudioSourceRef.current) {
+      currentAudioSourceRef.current.stop();
+    }
   };
 
   const handleVehicleSelection = (vehicle: SelectableVehicleType) => {
@@ -291,32 +328,31 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    // Use audio queue system instead of direct playAudio
-    playAudioSequence([`${vehicle}-selected.wav`]);
-    
-    if (vehicle === 'reject') {
-      // Update statistics for rejection
-      setGameStats(prev => ({
-        ...prev,
-        totalCalls: prev.totalCalls + 1,
-        callsRejected: prev.callsRejected + 1,
-        correctRejections: currentCall?.correct_dispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
-        incorrectRejections: currentCall?.correct_dispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
-        prankCallsHandled: currentCall?.correct_dispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
-      }));
-      
-      // If call is rejected, go back to STATE 0 and start next call
-      const isCorrectReject = currentCall?.correct_dispatch === 'reject';
-      setScore(prev => prev + (isCorrectReject ? 1 : -1));
-      setTimeout(() => {
+    playAudioSequence([`${vehicle}-selected.wav`], () => {
+      if (vehicle === 'reject') {
+        // Update statistics for rejection
+        setGameStats(prev => ({
+          ...prev,
+          totalCalls: prev.totalCalls + 1,
+          callsRejected: prev.callsRejected + 1,
+          correctRejections: currentCall?.correct_dispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
+          incorrectRejections: currentCall?.correct_dispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
+          prankCallsHandled: currentCall?.correct_dispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
+        }));
+        
+        // If call is rejected, go back to STATE 0 and start next call
+        const isCorrectReject = currentCall?.correct_dispatch === 'reject';
+        if (isCorrectReject) {
+          addScoreEvent('Correctly rejected a prank call', 50);
+        } else {
+          addScoreEvent('Incorrectly rejected a valid call', -50);
+        }
         startNextCall();
-      }, 1500); // Wait for selection audio to complete
-    } else {
-      // Go to STATE 2: waiting for district selection after audio completes
-      setTimeout(() => {
+      } else {
+        // Go to STATE 2: waiting for district selection
         setGameState(2);
-      }, 1500); // Wait for selection audio to complete
-    }
+      }
+    });
   };
 
   // Vehicle dispatch function with status management
@@ -371,18 +407,51 @@ const audioContextRef = useRef<AudioContext | null>(null);
         }
       }
 
-      // Play dispatch confirmation audio
-      const districtAudio = `${district.toLowerCase()}_district.wav`;
-      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio]);
-
       // Dispatch the vehicle
       const callType = currentCall?.correct_dispatch === 'fire' ? 'fire' :
                       currentCall?.correct_dispatch === 'ambulance' ? 'ambulance' : 'police';
       dispatchVehicle(closestVehicle, district, callType);
 
       // Check if correct vehicle type was selected
-      const isCorrectVehicle = selectedVehicle === currentCall?.correct_dispatch || (currentCall?.correct_dispatch === 'any' && (selectedVehicle as SelectableVehicleType) !== 'reject');
-      setScore(prev => prev + (isCorrectVehicle ? 1 : -1));
+      const isCorrectVehicle = selectedVehicle === currentCall?.correct_dispatch;
+      const isAnyVehicle = currentCall?.correct_dispatch === 'any' && (selectedVehicle as SelectableVehicleType) !== 'reject';
+      const isCorrectDistrict = district === currentCall?.district_location;
+
+      let scoreChange = 0;
+      let scoreMessage = '';
+
+      if (isCorrectDistrict) {
+        // District is correct - apply main scoring rules
+        if (isCorrectVehicle) {
+          // Correct Dispatch (vehicle and district correct): +50 points
+          scoreChange = 50;
+          scoreMessage = `Correct dispatch: ${selectedVehicle} to ${district}`;
+        } else if (isAnyVehicle) {
+          // "Any" Vehicle Dispatch (type is 'any' and district correct): +30 points
+          scoreChange = 30;
+          scoreMessage = `Any vehicle dispatch: ${selectedVehicle} to ${district}`;
+        } else {
+          // Incorrect Vehicle Dispatch (vehicle incorrect but district correct): +10 points
+          scoreChange = 10;
+          scoreMessage = `Incorrect vehicle dispatch: ${selectedVehicle} to ${district} (should be ${currentCall?.correct_dispatch})`;
+        }
+
+        // Distance penalty (only applies when district is correct)
+        const distance = getTransitTime(closestVehicle.district, district) / 15000; // 0, 1, or 2
+        if (distance === 1) {
+          scoreChange -= 10;
+          scoreMessage += ` - Adjacent district penalty (-10)`;
+        } else if (distance === 2) {
+          scoreChange -= 20;
+          scoreMessage += ` - Opposite district penalty (-20)`;
+        }
+      } else {
+        // District is incorrect - penalty for wrong district (no vehicle arrived to help)
+        scoreChange = -50;
+        scoreMessage = `Wrong district penalty: dispatched ${selectedVehicle} to ${district} (call was from ${currentCall?.district_location}) - no help arrived`;
+      }
+
+      addScoreEvent(scoreMessage, scoreChange);
       
       // Update statistics for dispatch
       setGameStats(prev => ({
@@ -395,17 +464,20 @@ const audioContextRef = useRef<AudioContext | null>(null);
         ambulanceCallsHandled: currentCall?.correct_dispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
       }));
       
-      // Start next call
-      startNextCall();
+      // Play dispatch confirmation audio then start next call
+      const districtAudio = `${district.toLowerCase()}_district.wav`;
+      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
+          startNextCall();
+      });
     } else {
       // No vehicle available - play appropriate audio and return to vehicle selection
       const vehicleType = selectedVehicle === 'firetruck' ? 'fire' :
                          selectedVehicle === 'ambulance' ? 'ambulance' : 'police';
       const districtName = district.toLowerCase();
-      playAudioSequence([`no-${vehicleType}-${districtName}.mp3`]);
-      
-      // Return to STATE 1 (vehicle selection) instead of STATE 0
-      setGameState(1);
+      playAudioSequence([`no-${vehicleType}-${districtName}.mp3`], () => {
+        // Return to STATE 1 (vehicle selection)
+        setGameState(1);
+      });
     }
   };
 
@@ -584,7 +656,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const handleClick = (event: React.MouseEvent) => {
-    if (!gameStarted) {
+    if (!gameStarted || gameOver) {
       startGame();
       return;
     }
@@ -736,7 +808,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
         opacity: 0.8,
         marginTop: '1rem'
       }}>
-        Refresh the page to start a new shift
+        Click anywhere to start a new shift
       </div>
     </div>
   );
@@ -760,6 +832,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
         touchAction: 'none'
       }}
     >
+      {gameStarted && (
+        <button
+          onClick={handleSkipAudio}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 1001,
+            padding: '10px',
+            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            border: '1px solid white',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          Skip Audio
+        </button>
+      )}
       <button
         onClick={() => setDebugMode(prev => !prev)}
         style={{
@@ -777,7 +867,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       >
         Debug
       </button>
-      {!debugMode && (
+      {debugMode && (
         <>
           {/* Top bar with score and timer */}
           {gameStarted && (
@@ -801,16 +891,45 @@ const audioContextRef = useRef<AudioContext | null>(null);
             alignItems: 'center',
             textAlign: 'center'
           }}>
-            {!gameStarted ? (
+            {gameOver ? (
+              <ScoreBoard />
+            ) : !gameStarted ? (
               <div>
                 <h1 style={{ fontSize: '3rem', marginBottom: '2rem' }}>Blind Dispatch</h1>
                 <p style={{ fontSize: '1.5rem' }}>Click anywhere to start your shift...</p>
               </div>
-            ) : timeLeft === 0 ? (
-              <ScoreBoard />
             ) : (
               <div>
                 <p style={{ fontSize: '1.5rem', opacity: 0.7 }}>{getStateDescription()}</p>
+                {/* Score History Panel */}
+                <div style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  color: 'white',
+                  padding: '20px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  width: '250px',
+                  maxHeight: '300px',
+                  position: 'absolute',
+                  top: '60px',
+                  left: '0',
+                  overflowY: 'auto'
+                }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Score History</h3>
+            {scoreEvents.slice().reverse().map((event, index) => (
+              <div key={index} style={{
+                marginBottom: '8px',
+                padding: '5px',
+                backgroundColor: event.amount > 0 ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)',
+                borderRadius: '3px'
+              }}>
+                <div>{event.message}</div>
+                <div style={{ fontWeight: 'bold', color: event.amount > 0 ? '#00FF00' : '#FF4444' }}>
+                  {event.amount > 0 ? `+${event.amount}` : event.amount}
+                </div>
+              </div>
+            ))}
+          </div>
                 {gameState === 1 && (
                   <div style={{ marginTop: '2rem', fontSize: '1rem', opacity: 0.5 }}>
                     <p>Police (Top Left) | Fire (Top Right)</p>
@@ -881,46 +1000,56 @@ const audioContextRef = useRef<AudioContext | null>(null);
         </>
       )}
       
-      {/* Debug panel showing vehicle status */}
-      {!debugMode && gameStarted && (
+      {/* Side panels for fleet status and score history */}
+      {debugMode && gameStarted && (
         <div style={{
           position: 'absolute',
           top: '120px',
           right: '20px',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          color: 'white',
-          padding: '20px',
-          borderRadius: '10px',
-          fontSize: '12px',
-          maxWidth: '300px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '20px',
           zIndex: 1000
         }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Fleet Status</h3>
-          {vehicles.map(vehicle => (
-            <div key={vehicle.id} style={{
-              marginBottom: '8px',
-              padding: '5px',
-              backgroundColor: vehicle.status === 'available' ? 'rgba(0, 255, 0, 0.2)' :
-                              vehicle.status === 'in-transit' ? 'rgba(255, 255, 0, 0.2)' :
-                              'rgba(255, 0, 0, 0.2)',
-              borderRadius: '3px'
-            }}>
-              <div><strong>{vehicle.type.toUpperCase()} #{vehicle.id}</strong></div>
-              <div>District: {vehicle.district}</div>
-              <div>Status: {vehicle.status}</div>
-            </div>
-          ))}
-          {gameStarted && (
-            <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #333' }}>
-              <div><strong>Current Call:</strong></div>
-              <div>Type: {currentCall?.correct_dispatch || 'None'}</div>
-              <div>District: {currentCall?.district_location || 'None'}</div>
-              <div>Selected: {selectedVehicle || 'None'}</div>
-              <div>State: {gameState}</div>
-            </div>
-          )}
+          {/* Fleet Status Panel */}
+          <div style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '20px',
+            borderRadius: '10px',
+            fontSize: '12px',
+            width: '250px',
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Fleet Status</h3>
+            {vehicles.map(vehicle => (
+              <div key={vehicle.id} style={{
+                marginBottom: '8px',
+                padding: '5px',
+                backgroundColor: vehicle.status === 'available' ? 'rgba(0, 255, 0, 0.2)' :
+                                vehicle.status === 'in-transit' ? 'rgba(255, 255, 0, 0.2)' :
+                                'rgba(255, 0, 0, 0.2)',
+                borderRadius: '3px'
+              }}>
+                <div><strong>{vehicle.type.toUpperCase()} #{vehicle.id}</strong></div>
+                <div>District: {vehicle.district}</div>
+                <div>Status: {vehicle.status}</div>
+              </div>
+            ))}
+            {gameStarted && (
+              <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #333' }}>
+                <div><strong>Current Call:</strong></div>
+                <div>Type: {currentCall?.correct_dispatch || 'None'}</div>
+                <div>District: {currentCall?.district_location || 'None'}</div>
+                <div>Selected: {selectedVehicle || 'None'}</div>
+                <div>State: {gameState}</div>
+              </div>
+            )}
+          </div>
+
+          
         </div>
       )}
     </main>
   );
 }
+
