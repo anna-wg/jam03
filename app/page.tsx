@@ -103,6 +103,8 @@ export default function BlindDispatch() {
   const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
   const [debugMode, setDebugMode] = useState(true);
+  const [hasPlayedSwipeInstructions, setHasPlayedSwipeInstructions] = useState(false);
+  const [hasPlayedCornersInstructions, setHasPlayedCornersInstructions] = useState(false);
   const [gameStats, setGameStats] = useState<GameStats>({
   totalCalls: 0,
   correctDispatches: 0,
@@ -275,6 +277,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
       prankCallsHandled: 0,
     });
     
+    setHasPlayedSwipeInstructions(false);
+    setHasPlayedCornersInstructions(false);
+    
     // Create a single audio sequence for all vehicle announcements
     const vehicleAnnouncements: string[] = [];
     newFleet.forEach(vehicle => {
@@ -304,7 +309,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setTimeout(() => {
       const districtAudio = `${nextCall.district_location.toLowerCase()}_district.wav`;
       playAudioSequence(['incoming-call-from.mp3', districtAudio, 'phone_ringing_short.mp3', 'call-pickup.mp3', nextCall.audio_file_name, 'call-hangup.mp3'], () => {
-        setGameState(1); // STATE 1: waiting for vehicle selection
+        if (!hasPlayedCornersInstructions) {
+          setHasPlayedCornersInstructions(true);
+          playAudioSequence(['corners-instructions.mp3'], () => {
+            setGameState(1); // STATE 1: waiting for vehicle selection
+          });
+        } else {
+          setGameState(1); // STATE 1: waiting for vehicle selection
+        }
       });
     }, 1000);
   };
@@ -350,7 +362,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
         startNextCall();
       } else {
         // Go to STATE 2: waiting for district selection
-        setGameState(2);
+        if (!hasPlayedSwipeInstructions) {
+          playAudioSequence(['swipe-instructions.mp3'], () => {
+            setGameState(2);
+          });
+          setHasPlayedSwipeInstructions(true);
+        } else {
+          setGameState(2);
+        }
       }
     });
   };
