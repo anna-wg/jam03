@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getAssetPath } from '../lib/utils';
+import Papa from 'papaparse';
 
 // Define the three game states
 type GameState = 0 | 1 | 2; // STATE 0: no input, STATE 1: waiting for vehicle, STATE 2: waiting for district
@@ -26,20 +27,10 @@ interface Vehicle {
 
 // Define the structure for a call scenario
 interface CallScenario {
-  id: number;
-  audioFile: string;
-  correctDispatch: 'police' | 'fire' | 'ambulance' | 'reject';
+  audio_file_name: string;
+  correct_dispatch: 'police' | 'fire' | 'ambulance' | 'reject' | 'any';
+  district_location: District;
 }
-
-const allCalls: CallScenario[] = [
-  { id: 1, audioFile: 'police-call-1.mp3', correctDispatch: 'police' },
-  { id: 2, audioFile: 'police-call-2.mp3', correctDispatch: 'police' },
-  { id: 3, audioFile: 'fire-call-1.mp3', correctDispatch: 'fire' },
-  { id: 4, audioFile: 'ems-call-1.mp3', correctDispatch: 'ambulance' },
-  { id: 5, audioFile: 'ems-call-2.mp3', correctDispatch: 'ambulance' },
-  { id: 6, audioFile: 'prank-call-1.mp3', correctDispatch: 'reject' },
-  { id: 7, audioFile: 'prank-call-2.mp3', correctDispatch: 'reject' },
-];
 
 const districts: District[] = ['North', 'South', 'East', 'West'];
 const getRandomDistrict = () => districts[Math.floor(Math.random() * districts.length)];
@@ -95,14 +86,15 @@ interface GameStats {
 
 export default function BlindDispatch() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-const [gameStarted, setGameStarted] = useState(false);
-const [gameState, setGameState] = useState<GameState>(0);
-const [score, setScore] = useState(0);
-const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
-const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
-const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
-const [debugMode, setDebugMode] = useState(false);
-const [gameStats, setGameStats] = useState<GameStats>({
+  const [allCalls, setAllCalls] = useState<CallScenario[]>([]);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [gameState, setGameState] = useState<GameState>(0);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+  const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [gameStats, setGameStats] = useState<GameStats>({
   totalCalls: 0,
   correctDispatches: 0,
   incorrectDispatches: 0,
@@ -120,51 +112,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
 
-  // Keyboard event handler for testing
   useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
-      console.log('Key pressed:', event.key, 'Game state:', gameState);
-      if (gameState === 2) {
-        switch (event.key) {
-          case 'ArrowUp':
-            console.log('Selecting North district');
-            handleDistrictSelection('North');
-            break;
-          case 'ArrowDown':
-            console.log('Selecting South district');
-            handleDistrictSelection('South');
-            break;
-          case 'ArrowLeft':
-            console.log('Selecting West district');
-            handleDistrictSelection('West');
-            break;
-          case 'ArrowRight':
-            console.log('Selecting East district');
-            handleDistrictSelection('East');
-            break;
-          case '1':
-            console.log('Debug: Selecting North district');
-            handleDistrictSelection('North');
-            break;
-          case '2':
-            console.log('Debug: Selecting South district');
-            handleDistrictSelection('South');
-            break;
-          case '3':
-            console.log('Debug: Selecting West district');
-            handleDistrictSelection('West');
-            break;
-          case '4':
-            console.log('Debug: Selecting East district');
-            handleDistrictSelection('East');
-            break;
+    const fetchCalls = async () => {
+      const response = await fetch(getAssetPath('/audio/emergency_calls/calls.csv'));
+      const reader = response.body!.getReader();
+      const result = await reader.read();
+      const decoder = new TextDecoder('utf-8');
+      const csv = decoder.decode(result.value);
+      Papa.parse(csv, {
+        header: true,
+        complete: (results) => {
+          const calls = results.data as CallScenario[];
+          setAllCalls(calls);
         }
-      }
+      });
     };
+    fetchCalls();
+  }, []);
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameState]);
 
   // Timer effect
   useEffect(() => {
@@ -185,7 +150,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
         return resolve(); // Resolve immediately if context is not ready
       }
 
-      const audioPath = getAssetPath(`/audio/${audioFile}`);
+      const emergencyCalls = allCalls.map(c => c.audio_file_name);
+      const isEmergencyCall = emergencyCalls.includes(audioFile);
+      const audioPath = getAssetPath(isEmergencyCall ? `/audio/emergency_calls/${audioFile}` : `/audio/${audioFile}`);
       try {
         const response = await fetch(audioPath);
         if (!response.ok) {
@@ -249,6 +216,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
     // Initialize new fleet with random placement
     const newFleet = createInitialFleet();
     setVehicles(newFleet);
+
+    // Randomize district locations for calls
+    const randomizedCalls = allCalls.map(call => ({
+      ...call,
+      district_location: getRandomDistrict()
+    }));
+    setAllCalls(randomizedCalls);
+
     setGameStarted(true);
     setScore(0);
     setTimeLeft(300);
@@ -284,7 +259,11 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const startNextCall = () => {
-    const availableCalls = allCalls.filter(call => call.id !== currentCall?.id);
+    const availableCalls = allCalls.filter(call => call.audio_file_name !== currentCall?.audio_file_name);
+    if (availableCalls.length === 0) {
+      endGame();
+      return;
+    }
     const nextCall = availableCalls[Math.floor(Math.random() * availableCalls.length)];
     setCurrentCall(nextCall);
     setSelectedVehicle(null);
@@ -292,7 +271,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
     
     // Use the audio queue system and wait for completion
     setTimeout(() => {
-      playAudioSequence([nextCall.audioFile]);
+      playAudioSequence([nextCall.audio_file_name]);
       // Set state to 1 after audio completes (estimate based on typical call duration)
       setTimeout(() => {
         setGameState(1); // STATE 1: waiting for vehicle selection
@@ -321,13 +300,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
         ...prev,
         totalCalls: prev.totalCalls + 1,
         callsRejected: prev.callsRejected + 1,
-        correctRejections: currentCall?.correctDispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
-        incorrectRejections: currentCall?.correctDispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
-        prankCallsHandled: currentCall?.correctDispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
+        correctRejections: currentCall?.correct_dispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
+        incorrectRejections: currentCall?.correct_dispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
+        prankCallsHandled: currentCall?.correct_dispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
       }));
       
       // If call is rejected, go back to STATE 0 and start next call
-      setScore(prev => prev + (currentCall?.correctDispatch === 'reject' ? 1 : -1));
+      const isCorrectReject = currentCall?.correct_dispatch === 'reject';
+      setScore(prev => prev + (isCorrectReject ? 1 : -1));
       setTimeout(() => {
         startNextCall();
       }, 1500); // Wait for selection audio to complete
@@ -396,12 +376,12 @@ const audioContextRef = useRef<AudioContext | null>(null);
       playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio]);
 
       // Dispatch the vehicle
-      const callType = currentCall?.correctDispatch === 'fire' ? 'fire' :
-                      currentCall?.correctDispatch === 'ambulance' ? 'ambulance' : 'police';
+      const callType = currentCall?.correct_dispatch === 'fire' ? 'fire' :
+                      currentCall?.correct_dispatch === 'ambulance' ? 'ambulance' : 'police';
       dispatchVehicle(closestVehicle, district, callType);
 
       // Check if correct vehicle type was selected
-      const isCorrectVehicle = selectedVehicle === currentCall?.correctDispatch;
+      const isCorrectVehicle = selectedVehicle === currentCall?.correct_dispatch || (currentCall?.correct_dispatch === 'any' && (selectedVehicle as SelectableVehicleType) !== 'reject');
       setScore(prev => prev + (isCorrectVehicle ? 1 : -1));
       
       // Update statistics for dispatch
@@ -410,9 +390,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
         totalCalls: prev.totalCalls + 1,
         correctDispatches: isCorrectVehicle ? prev.correctDispatches + 1 : prev.correctDispatches,
         incorrectDispatches: !isCorrectVehicle ? prev.incorrectDispatches + 1 : prev.incorrectDispatches,
-        policeCallsHandled: currentCall?.correctDispatch === 'police' ? prev.policeCallsHandled + 1 : prev.policeCallsHandled,
-        fireCallsHandled: currentCall?.correctDispatch === 'fire' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
-        ambulanceCallsHandled: currentCall?.correctDispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
+        policeCallsHandled: currentCall?.correct_dispatch === 'police' ? prev.policeCallsHandled + 1 : prev.policeCallsHandled,
+        fireCallsHandled: currentCall?.correct_dispatch === 'fire' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
+        ambulanceCallsHandled: currentCall?.correct_dispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
       }));
       
       // Start next call
@@ -428,6 +408,53 @@ const audioContextRef = useRef<AudioContext | null>(null);
       setGameState(1);
     }
   };
+
+
+  // Keyboard event handler for testing
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      console.log('Key pressed:', event.key, 'Game state:', gameState);
+      if (gameState === 2) {
+        switch (event.key) {
+          case 'ArrowUp':
+            console.log('Selecting North district');
+            handleDistrictSelection('North');
+            break;
+          case 'ArrowDown':
+            console.log('Selecting South district');
+            handleDistrictSelection('South');
+            break;
+          case 'ArrowLeft':
+            console.log('Selecting West district');
+            handleDistrictSelection('West');
+            break;
+          case 'ArrowRight':
+            console.log('Selecting East district');
+            handleDistrictSelection('East');
+            break;
+          case '1':
+            console.log('Debug: Selecting North district');
+            handleDistrictSelection('North');
+            break;
+          case '2':
+            console.log('Debug: Selecting South district');
+            handleDistrictSelection('South');
+            break;
+          case '3':
+            console.log('Debug: Selecting West district');
+            handleDistrictSelection('West');
+            break;
+          case '4':
+            console.log('Debug: Selecting East district');
+            handleDistrictSelection('East');
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [gameState, handleDistrictSelection]);
 
   const handleQuadrantTap = (event: React.MouseEvent | React.TouchEvent) => {
     if (gameState !== 1) return;
@@ -886,7 +913,8 @@ const audioContextRef = useRef<AudioContext | null>(null);
           {gameStarted && (
             <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #333' }}>
               <div><strong>Current Call:</strong></div>
-              <div>Type: {currentCall?.correctDispatch || 'None'}</div>
+              <div>Type: {currentCall?.correct_dispatch || 'None'}</div>
+              <div>District: {currentCall?.district_location || 'None'}</div>
               <div>Selected: {selectedVehicle || 'None'}</div>
               <div>State: {gameState}</div>
             </div>
