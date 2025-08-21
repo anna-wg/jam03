@@ -40,11 +40,8 @@ const getRandomDistrict = () => districts[Math.floor(Math.random() * districts.l
 // Function to create initial fleet with random placement
 const createInitialFleet = (): Vehicle[] => [
   { id: 1, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
-  { id: 2, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
-  { id: 3, type: 'police', district: getRandomDistrict(), status: 'available' },
-  { id: 4, type: 'police', district: getRandomDistrict(), status: 'available' },
-  { id: 5, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
-  { id: 6, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
+  { id: 2, type: 'police', district: getRandomDistrict(), status: 'available' },
+  { id: 3, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
 ];
 
 // Transit time calculation (15 seconds per district away)
@@ -126,6 +123,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
+  const nextCallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const addScoreEvent = (message: string, amount: number) => {
     setScore(prev => prev + amount);
@@ -298,7 +296,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
     });
 
     // Play game start audio, then vehicle announcements, then start first call
-    playAudioSequence(['tutorial.mp3', ...vehicleAnnouncements], () => {
+    playAudioSequence(['tutorial1.mp3', ...vehicleAnnouncements], () => {
       startNextCall();
     });
   };
@@ -315,7 +313,10 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setGameState(0); // STATE 0: no input during call audio
     
     // Use the audio queue system and wait for completion
-    setTimeout(() => {
+    if (nextCallTimeoutRef.current) {
+      clearTimeout(nextCallTimeoutRef.current);
+    }
+    nextCallTimeoutRef.current = setTimeout(() => {
       const districtAudio = `${nextCall.district_location.toLowerCase()}_district.wav`;
       playAudioSequence(['incoming-call-from.mp3', districtAudio, 'phone_ringing_short.mp3', 'call-pickup.mp3', nextCall.audio_file_name, 'call-hangup.mp3'], () => {
         if (!hasPlayedCornersInstructions) {
@@ -331,16 +332,47 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const endGame = () => {
+    if (nextCallTimeoutRef.current) {
+      clearTimeout(nextCallTimeoutRef.current);
+      nextCallTimeoutRef.current = null;
+    }
+    
+    // Stop all audio immediately
+    handleSkipAudio();
+    
+    // Clear the audio queue completely
+    audioQueueRef.current = [];
+    
+    // Reset audio playing state
+    isPlayingAudioRef.current = false;
+    
     setGameOver(true);
     setGameState(0);
-    playAudioSequence(['game-over.wav']);
+    
+    // Play game over audio after a short delay to ensure other audio is stopped
+    setTimeout(() => {
+      playAudioSequence(['game-over.wav']);
+    }, 100);
   };
 
   const handleSkipAudio = () => {
     isSkippingRef.current = true;
+    
+    // Stop current audio source
     if (currentAudioSourceRef.current) {
-      currentAudioSourceRef.current.stop();
+      try {
+        currentAudioSourceRef.current.stop();
+      } catch (error) {
+        // Audio might already be stopped, ignore error
+      }
+      currentAudioSourceRef.current = null;
     }
+    
+    // Clear the audio queue to prevent any queued audio from playing
+    audioQueueRef.current = [];
+    
+    // Reset audio playing state
+    isPlayingAudioRef.current = false;
   };
 
   const handleVehicleSelection = (vehicle: SelectableVehicleType) => {
@@ -916,6 +948,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
           }}
         >
           Skip Audio
+        </button>
+      )}
+      {debugMode && gameStarted && (
+        <button
+          onClick={endGame}
+          style={{
+            position: 'absolute',
+            bottom: '60px',
+            right: '20px',
+            zIndex: 1001,
+            padding: '10px',
+            backgroundColor: 'rgba(255, 0, 0, 0.5)',
+            border: '1px solid white',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          Finish Game
         </button>
       )}
       <button
