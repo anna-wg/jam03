@@ -1,8 +1,8 @@
 audio_file_name,correct_dispatch,district_location
-police-call-1.mp3,police,
-police-call-2.mp3,police,
-fire-call-1.mp3,fire,
-ems-call-1.mp3,ambulance,
-ems-call-2.mp3,ambulance,
-prank-call-1.mp3,reject,
-prank-call-2.mp3,reject,
+police-call-1.mp3,police,north
+police-call-2.mp3,police,south
+fire-call-1.mp3,fire,east
+ems-call-1.mp3,ambulance,west
+ems-call-2.mp3,ambulance,north
+prank-call-1.mp3,reject,south
+prank-call-2.mp3,reject,east

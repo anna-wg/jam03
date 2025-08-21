@@ -62,12 +62,12 @@ const getTransitTime = (start: District, end: District): number => {
 // Call duration based on call type (in milliseconds)
 const getCallDuration = (callType: string): number => {
   const durations: Record<string, number> = {
-    'police': 45000,    // 45 seconds
-    'fire': 60000,      // 60 seconds
-    'ambulance': 30000, // 30 seconds
+    'police': 15000,    // 15 seconds
+    'fire': 15000,      // 15 seconds
+    'ambulance': 15000, // 15 seconds
     'reject': 0,        // No duration for rejected calls
   };
-  return durations[callType] || 30000;
+  return durations[callType] || 15000;
 };
 
 // Game statistics interface
@@ -108,6 +108,8 @@ export default function BlindDispatch() {
 });
 
 const audioContextRef = useRef<AudioContext | null>(null);
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const isSkippingRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
@@ -162,10 +164,16 @@ const audioContextRef = useRef<AudioContext | null>(null);
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
         const source = audioContextRef.current.createBufferSource();
+        currentAudioSourceRef.current = source;
         source.buffer = audioBuffer;
         source.connect(audioContextRef.current.destination);
         source.start(0);
-        source.onended = () => resolve();
+        source.onended = () => {
+          if (currentAudioSourceRef.current === source) {
+            currentAudioSourceRef.current = null;
+          }
+          resolve();
+        };
       } catch (error) {
         console.error(`Failed to play audio file: ${audioFile}`, error);
         reject(error);
@@ -173,11 +181,11 @@ const audioContextRef = useRef<AudioContext | null>(null);
     });
   };
 
-  const audioQueueRef = useRef<string[][]>([]);
+  const audioQueueRef = useRef<{ files: string[]; onComplete?: () => void }[]>([]);
   const isPlayingAudioRef = useRef(false);
 
-  const playAudioSequence = (audioFiles: string[]) => {
-    audioQueueRef.current.push(audioFiles);
+  const playAudioSequence = (audioFiles: string[], onComplete?: () => void) => {
+    audioQueueRef.current.push({ files: audioFiles, onComplete });
     processAudioQueue();
   };
 
@@ -187,16 +195,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
     }
 
     isPlayingAudioRef.current = true;
-    const audioFiles = audioQueueRef.current.shift();
+    const sequence = audioQueueRef.current.shift();
 
-    if (audioFiles) {
-      for (const audioFile of audioFiles) {
+    if (sequence) {
+      isSkippingRef.current = false; // Reset for the new sequence
+      for (const audioFile of sequence.files) {
+        if (isSkippingRef.current) {
+          break;
+        }
         try {
           await playAudio(audioFile);
         } catch (error) {
           console.error('Error playing audio sequence:', error);
           break;
         }
+      }
+      
+      if (sequence.onComplete) {
+        sequence.onComplete();
       }
     }
 
@@ -213,6 +229,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       await audioContextRef.current.resume();
     }
 
+    setGameState(0); // Set to 0 to prevent input during intro
     // Initialize new fleet with random placement
     const newFleet = createInitialFleet();
     setVehicles(newFleet);
@@ -246,16 +263,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
     const vehicleAnnouncements: string[] = [];
     newFleet.forEach(vehicle => {
       const districtAudio = `${vehicle.district.toLowerCase()}_district.wav`;
-      vehicleAnnouncements.push(`${vehicle.type}.wav`, 'located_in.wav', districtAudio);
+      const vehicleAudio = `${vehicle.type}.wav`;
+      vehicleAnnouncements.push(vehicleAudio, 'located_in.wav', districtAudio);
     });
 
     // Play game start audio, then vehicle announcements, then start first call
-    playAudioSequence(['game-start.wav', ...vehicleAnnouncements]);
-    
-    // Start the first call after a delay to ensure audio sequence completes
-    setTimeout(() => {
+    playAudioSequence(['tutorial.mp3', ...vehicleAnnouncements], () => {
       startNextCall();
-    }, (vehicleAnnouncements.length + 1) * 1500); // Rough estimate of audio duration
+    });
   };
 
   const startNextCall = () => {
@@ -271,11 +286,10 @@ const audioContextRef = useRef<AudioContext | null>(null);
     
     // Use the audio queue system and wait for completion
     setTimeout(() => {
-      playAudioSequence([nextCall.audio_file_name]);
-      // Set state to 1 after audio completes (estimate based on typical call duration)
-      setTimeout(() => {
+      const districtAudio = `${nextCall.district_location.toLowerCase()}_district.wav`;
+      playAudioSequence(['incoming-call-from.mp3', districtAudio, 'phone_ringing_short.mp3', 'call-pickup.mp3', nextCall.audio_file_name, 'call-hangup.mp3'], () => {
         setGameState(1); // STATE 1: waiting for vehicle selection
-      }, 4000); // Rough estimate for call audio duration
+      });
     }, 1000);
   };
 
@@ -285,38 +299,40 @@ const audioContextRef = useRef<AudioContext | null>(null);
     playAudioSequence(['game-over.wav']);
   };
 
+  const handleSkipAudio = () => {
+    isSkippingRef.current = true;
+    if (currentAudioSourceRef.current) {
+      currentAudioSourceRef.current.stop();
+    }
+  };
+
   const handleVehicleSelection = (vehicle: SelectableVehicleType) => {
     if (gameState !== 1) return;
 
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    // Use audio queue system instead of direct playAudio
-    playAudioSequence([`${vehicle}-selected.wav`]);
-    
-    if (vehicle === 'reject') {
-      // Update statistics for rejection
-      setGameStats(prev => ({
-        ...prev,
-        totalCalls: prev.totalCalls + 1,
-        callsRejected: prev.callsRejected + 1,
-        correctRejections: currentCall?.correct_dispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
-        incorrectRejections: currentCall?.correct_dispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
-        prankCallsHandled: currentCall?.correct_dispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
-      }));
-      
-      // If call is rejected, go back to STATE 0 and start next call
-      const isCorrectReject = currentCall?.correct_dispatch === 'reject';
-      setScore(prev => prev + (isCorrectReject ? 1 : -1));
-      setTimeout(() => {
-        startNextCall();
-      }, 1500); // Wait for selection audio to complete
-    } else {
-      // Go to STATE 2: waiting for district selection after audio completes
-      setTimeout(() => {
+    playAudioSequence([`${vehicle}-selected.wav`], () => {
+      if (vehicle === 'reject') {
+        // Update statistics for rejection
+        setGameStats(prev => ({
+          ...prev,
+          totalCalls: prev.totalCalls + 1,
+          callsRejected: prev.callsRejected + 1,
+          correctRejections: currentCall?.correct_dispatch === 'reject' ? prev.correctRejections + 1 : prev.correctRejections,
+          incorrectRejections: currentCall?.correct_dispatch !== 'reject' ? prev.incorrectRejections + 1 : prev.incorrectRejections,
+          prankCallsHandled: currentCall?.correct_dispatch === 'reject' ? prev.prankCallsHandled + 1 : prev.prankCallsHandled,
+        }));
+        
+        // If call is rejected, go back to STATE 0 and start next call
+        const isCorrectReject = currentCall?.correct_dispatch === 'reject';
+        setScore(prev => prev + (isCorrectReject ? 1 : -1));
+          startNextCall();
+      } else {
+        // Go to STATE 2: waiting for district selection
         setGameState(2);
-      }, 1500); // Wait for selection audio to complete
-    }
+      }
+    });
   };
 
   // Vehicle dispatch function with status management
@@ -371,10 +387,6 @@ const audioContextRef = useRef<AudioContext | null>(null);
         }
       }
 
-      // Play dispatch confirmation audio
-      const districtAudio = `${district.toLowerCase()}_district.wav`;
-      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio]);
-
       // Dispatch the vehicle
       const callType = currentCall?.correct_dispatch === 'fire' ? 'fire' :
                       currentCall?.correct_dispatch === 'ambulance' ? 'ambulance' : 'police';
@@ -395,17 +407,20 @@ const audioContextRef = useRef<AudioContext | null>(null);
         ambulanceCallsHandled: currentCall?.correct_dispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
       }));
       
-      // Start next call
-      startNextCall();
+      // Play dispatch confirmation audio then start next call
+      const districtAudio = `${district.toLowerCase()}_district.wav`;
+      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
+          startNextCall();
+      });
     } else {
       // No vehicle available - play appropriate audio and return to vehicle selection
       const vehicleType = selectedVehicle === 'firetruck' ? 'fire' :
                          selectedVehicle === 'ambulance' ? 'ambulance' : 'police';
       const districtName = district.toLowerCase();
-      playAudioSequence([`no-${vehicleType}-${districtName}.mp3`]);
-      
-      // Return to STATE 1 (vehicle selection) instead of STATE 0
-      setGameState(1);
+      playAudioSequence([`no-${vehicleType}-${districtName}.mp3`], () => {
+        // Return to STATE 1 (vehicle selection)
+        setGameState(1);
+      });
     }
   };
 
@@ -760,6 +775,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
         touchAction: 'none'
       }}
     >
+      {gameStarted && (
+        <button
+          onClick={handleSkipAudio}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            zIndex: 1001,
+            padding: '10px',
+            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            border: '1px solid white',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          Skip Audio
+        </button>
+      )}
       <button
         onClick={() => setDebugMode(prev => !prev)}
         style={{
