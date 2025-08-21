@@ -1,8 +1,0 @@
-audio_file_name,fire_points,fire_resolution,ambulance_points,ambulance_resolution,police_points,police_resolution,distance_penalty,event_type
-police-call-1.mp3,10,fire-poor-response.txt,30,ambulance-adequate-response.txt,50,police-excellent-response.txt,5,call
-police-call-2.mp3,10,fire-poor-response.txt,20,ambulance-poor-response.txt,50,police-excellent-response.txt,5,call
-fire-call-1.mp3,50,fire-excellent-response.txt,30,ambulance-adequate-response.txt,10,police-poor-response.txt,10,call
-ems-call-1.mp3,30,fire-adequate-response.txt,50,ambulance-excellent-response.txt,30,police-adequate-response.txt,5,call
-ems-call-2.mp3,20,fire-poor-response.txt,50,ambulance-excellent-response.txt,20,police-poor-response.txt,5,call
-prank-call-1.mp3,0,fire-wasted-response.txt,0,ambulance-wasted-response.txt,0,police-wasted-response.txt,0,call
-prank-call-2.mp3,0,fire-wasted-response.txt,0,ambulance-wasted-response.txt,0,police-wasted-response.txt,0,call

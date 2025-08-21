@@ -28,8 +28,10 @@ interface Vehicle {
 // Define the structure for a call scenario
 interface CallScenario {
   audio_file_name: string;
-  correct_dispatch: 'police' | 'fire' | 'ambulance' | 'reject' | 'any';
+  correct_dispatch: 'police' | 'firetruck' | 'ambulance' | 'reject' | 'any';
   district_location: District;
+  wrong_resolution_audio: string;
+  correct_resolution_audio: string;
 }
 
 const districts: District[] = ['North', 'South', 'East', 'West'];
@@ -63,7 +65,7 @@ const getTransitTime = (start: District, end: District): number => {
 const getCallDuration = (callType: string): number => {
   const durations: Record<string, number> = {
     'police': 15000,    // 15 seconds
-    'fire': 15000,      // 15 seconds
+    'firetruck': 15000,      // 15 seconds
     'ambulance': 15000, // 15 seconds
     'reject': 0,        // No duration for rejected calls
   };
@@ -139,6 +141,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       const csv = decoder.decode(result.value);
       Papa.parse(csv, {
         header: true,
+        transformHeader: header => header.trim(),
         complete: (results) => {
           const calls = results.data as CallScenario[];
           setAllCalls(calls);
@@ -168,8 +171,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
         return resolve(); // Resolve immediately if context is not ready
       }
 
-      const emergencyCalls = allCalls.map(c => c.audio_file_name);
-      const isEmergencyCall = emergencyCalls.includes(audioFile);
+      const emergencyCallAudioFiles = allCalls.map(c => c.audio_file_name);
+      const wrongResolutionAudioFiles = allCalls.map(c => c.wrong_resolution_audio);
+      const correctResolutionAudioFiles = allCalls.map(c => c.correct_resolution_audio);
+
+      const isEmergencyCall = emergencyCallAudioFiles.includes(audioFile) ||
+                              wrongResolutionAudioFiles.includes(audioFile) ||
+                              correctResolutionAudioFiles.includes(audioFile);
+                              
       const audioPath = getAssetPath(isEmergencyCall ? `/audio/emergency_calls/${audioFile}` : `/audio/${audioFile}`);
       try {
         const response = await fetch(audioPath);
@@ -359,7 +368,15 @@ const audioContextRef = useRef<AudioContext | null>(null);
         } else {
           addScoreEvent('Incorrectly rejected a valid call', -50);
         }
-        startNextCall();
+        
+        const audioToPlay = isCorrectReject ? currentCall?.correct_resolution_audio : currentCall?.wrong_resolution_audio;
+        if (audioToPlay) {
+            playAudioSequence([audioToPlay], () => {
+                startNextCall();
+            });
+        } else {
+            startNextCall();
+        }
       } else {
         // Go to STATE 2: waiting for district selection
         if (!hasPlayedSwipeInstructions) {
@@ -404,7 +421,27 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const handleDistrictSelection = (district: District) => {
-    if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject') return;
+    if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject' || !currentCall) return;
+
+    // Handle case where a vehicle is dispatched for a call that should be rejected
+    if (currentCall.correct_dispatch === 'reject') {
+        setGameState(0);
+        addScoreEvent('Incorrectly dispatched for a prank call', -50);
+        setGameStats(prev => ({
+            ...prev,
+            totalCalls: prev.totalCalls + 1,
+            incorrectDispatches: prev.incorrectDispatches + 1,
+            prankCallsHandled: prev.prankCallsHandled + 1,
+        }));
+
+        const audioToPlay = currentCall.wrong_resolution_audio;
+        if (audioToPlay) {
+            playAudioSequence([audioToPlay], startNextCall);
+        } else {
+            startNextCall();
+        }
+        return;
+    }
 
     setGameState(0); // STATE 0: no input during audio feedback
 
@@ -427,7 +464,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       }
 
       // Dispatch the vehicle
-      const callType = currentCall?.correct_dispatch === 'fire' ? 'fire' :
+      const callType = currentCall?.correct_dispatch === 'firetruck' ? 'firetruck' :
                       currentCall?.correct_dispatch === 'ambulance' ? 'ambulance' : 'police';
       dispatchVehicle(closestVehicle, district, callType);
 
@@ -479,15 +516,25 @@ const audioContextRef = useRef<AudioContext | null>(null);
         correctDispatches: isCorrectVehicle ? prev.correctDispatches + 1 : prev.correctDispatches,
         incorrectDispatches: !isCorrectVehicle ? prev.incorrectDispatches + 1 : prev.incorrectDispatches,
         policeCallsHandled: currentCall?.correct_dispatch === 'police' ? prev.policeCallsHandled + 1 : prev.policeCallsHandled,
-        fireCallsHandled: currentCall?.correct_dispatch === 'fire' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
+        fireCallsHandled: currentCall?.correct_dispatch === 'firetruck' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
         ambulanceCallsHandled: currentCall?.correct_dispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
       }));
       
       // Play dispatch confirmation audio then start next call
-      const districtAudio = `${district.toLowerCase()}_district.wav`;
-      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
-          startNextCall();
-      });
+      const isCorrectDispatch = (isCorrectVehicle || isAnyVehicle) && isCorrectDistrict;
+      const audioToPlay = isCorrectDispatch ? currentCall?.correct_resolution_audio : currentCall?.wrong_resolution_audio;
+
+      if (audioToPlay) {
+          playAudioSequence([audioToPlay], () => {
+              startNextCall();
+          });
+      } else {
+          // Fallback to old audio
+          const districtAudio = `${district.toLowerCase()}_district.wav`;
+          playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
+              startNextCall();
+          });
+      }
     } else {
       // No vehicle available - play appropriate audio and return to vehicle selection
       const vehicleType = selectedVehicle === 'firetruck' ? 'fire' :
