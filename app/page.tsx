@@ -28,8 +28,10 @@ interface Vehicle {
 // Define the structure for a call scenario
 interface CallScenario {
   audio_file_name: string;
-  correct_dispatch: 'police' | 'fire' | 'ambulance' | 'reject' | 'any';
+  correct_dispatch: 'police' | 'firetruck' | 'ambulance' | 'reject' | 'any';
   district_location: District;
+  wrong_resolution_audio: string;
+  correct_resolution_audio: string;
 }
 
 const districts: District[] = ['North', 'South', 'East', 'West'];
@@ -38,11 +40,8 @@ const getRandomDistrict = () => districts[Math.floor(Math.random() * districts.l
 // Function to create initial fleet with random placement
 const createInitialFleet = (): Vehicle[] => [
   { id: 1, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
-  { id: 2, type: 'firetruck', district: getRandomDistrict(), status: 'available' },
-  { id: 3, type: 'police', district: getRandomDistrict(), status: 'available' },
-  { id: 4, type: 'police', district: getRandomDistrict(), status: 'available' },
-  { id: 5, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
-  { id: 6, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
+  { id: 2, type: 'police', district: getRandomDistrict(), status: 'available' },
+  { id: 3, type: 'ambulance', district: getRandomDistrict(), status: 'available' },
 ];
 
 // Transit time calculation (15 seconds per district away)
@@ -63,7 +62,7 @@ const getTransitTime = (start: District, end: District): number => {
 const getCallDuration = (callType: string): number => {
   const durations: Record<string, number> = {
     'police': 15000,    // 15 seconds
-    'fire': 15000,      // 15 seconds
+    'firetruck': 15000,      // 15 seconds
     'ambulance': 15000, // 15 seconds
     'reject': 0,        // No duration for rejected calls
   };
@@ -103,6 +102,8 @@ export default function BlindDispatch() {
   const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
   const [debugMode, setDebugMode] = useState(true);
+  const [hasPlayedSwipeInstructions, setHasPlayedSwipeInstructions] = useState(false);
+  const [hasPlayedCornersInstructions, setHasPlayedCornersInstructions] = useState(false);
   const [gameStats, setGameStats] = useState<GameStats>({
   totalCalls: 0,
   correctDispatches: 0,
@@ -122,6 +123,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
+  const nextCallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const addScoreEvent = (message: string, amount: number) => {
     setScore(prev => prev + amount);
@@ -137,6 +139,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       const csv = decoder.decode(result.value);
       Papa.parse(csv, {
         header: true,
+        transformHeader: header => header.trim(),
         complete: (results) => {
           const calls = results.data as CallScenario[];
           setAllCalls(calls);
@@ -166,8 +169,14 @@ const audioContextRef = useRef<AudioContext | null>(null);
         return resolve(); // Resolve immediately if context is not ready
       }
 
-      const emergencyCalls = allCalls.map(c => c.audio_file_name);
-      const isEmergencyCall = emergencyCalls.includes(audioFile);
+      const emergencyCallAudioFiles = allCalls.map(c => c.audio_file_name);
+      const wrongResolutionAudioFiles = allCalls.map(c => c.wrong_resolution_audio);
+      const correctResolutionAudioFiles = allCalls.map(c => c.correct_resolution_audio);
+
+      const isEmergencyCall = emergencyCallAudioFiles.includes(audioFile) ||
+                              wrongResolutionAudioFiles.includes(audioFile) ||
+                              correctResolutionAudioFiles.includes(audioFile);
+                              
       const audioPath = getAssetPath(isEmergencyCall ? `/audio/emergency_calls/${audioFile}` : `/audio/${audioFile}`);
       try {
         const response = await fetch(audioPath);
@@ -275,6 +284,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
       prankCallsHandled: 0,
     });
     
+    setHasPlayedSwipeInstructions(false);
+    setHasPlayedCornersInstructions(false);
+    
     // Create a single audio sequence for all vehicle announcements
     const vehicleAnnouncements: string[] = [];
     newFleet.forEach(vehicle => {
@@ -284,7 +296,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
     });
 
     // Play game start audio, then vehicle announcements, then start first call
-    playAudioSequence(['tutorial.mp3', ...vehicleAnnouncements], () => {
+    playAudioSequence(['tutorial1.mp3', ...vehicleAnnouncements], () => {
       startNextCall();
     });
   };
@@ -301,25 +313,69 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setGameState(0); // STATE 0: no input during call audio
     
     // Use the audio queue system and wait for completion
-    setTimeout(() => {
+    if (nextCallTimeoutRef.current) {
+      clearTimeout(nextCallTimeoutRef.current);
+    }
+    nextCallTimeoutRef.current = setTimeout(() => {
       const districtAudio = `${nextCall.district_location.toLowerCase()}_district.wav`;
       playAudioSequence(['incoming-call-from.mp3', districtAudio, 'phone_ringing_short.mp3', 'call-pickup.mp3', nextCall.audio_file_name, 'call-hangup.mp3'], () => {
-        setGameState(1); // STATE 1: waiting for vehicle selection
+        if (!hasPlayedCornersInstructions) {
+          setHasPlayedCornersInstructions(true);
+          playAudioSequence(['corners-instructions.mp3'], () => {
+            setGameState(1); // STATE 1: waiting for vehicle selection
+          });
+        } else {
+          setGameState(1); // STATE 1: waiting for vehicle selection
+        }
       });
     }, 1000);
   };
 
   const endGame = () => {
+    if (nextCallTimeoutRef.current) {
+      clearTimeout(nextCallTimeoutRef.current);
+      nextCallTimeoutRef.current = null;
+    }
+    
+    // Stop all audio immediately
+    handleSkipAudio();
+    
+    // Clear the audio queue completely
+    audioQueueRef.current = [];
+    
+    // Reset audio playing state
+    isPlayingAudioRef.current = false;
+    
     setGameOver(true);
     setGameState(0);
-    playAudioSequence(['game-over.wav']);
+    
+    // Play game over audio after a short delay to ensure other audio is stopped
+    setTimeout(() => {
+      playAudioSequence(['game-over.wav']);
+    }, 100);
+
+
+    
   };
 
   const handleSkipAudio = () => {
     isSkippingRef.current = true;
+    
+    // Stop current audio source
     if (currentAudioSourceRef.current) {
-      currentAudioSourceRef.current.stop();
+      try {
+        currentAudioSourceRef.current.stop();
+      } catch (error) {
+        // Audio might already be stopped, ignore error
+      }
+      currentAudioSourceRef.current = null;
     }
+    
+    // Clear the audio queue to prevent any queued audio from playing
+    audioQueueRef.current = [];
+    
+    // Reset audio playing state
+    isPlayingAudioRef.current = false;
   };
 
   const handleVehicleSelection = (vehicle: SelectableVehicleType) => {
@@ -328,7 +384,9 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    playAudioSequence([`${vehicle}-selected.wav`], () => {
+    // Play appropriate sound based on vehicle selection
+    const vehicleSound = vehicle === 'reject' ? 'call-ignored.mp3' : `${vehicle}.wav`;
+    playAudioSequence([vehicleSound], () => {
       if (vehicle === 'reject') {
         // Update statistics for rejection
         setGameStats(prev => ({
@@ -347,10 +405,25 @@ const audioContextRef = useRef<AudioContext | null>(null);
         } else {
           addScoreEvent('Incorrectly rejected a valid call', -50);
         }
-        startNextCall();
+        
+        const audioToPlay = isCorrectReject ? currentCall?.correct_resolution_audio : currentCall?.wrong_resolution_audio;
+        if (audioToPlay) {
+            playAudioSequence([audioToPlay], () => {
+                startNextCall();
+            });
+        } else {
+            startNextCall();
+        }
       } else {
         // Go to STATE 2: waiting for district selection
-        setGameState(2);
+        if (!hasPlayedSwipeInstructions) {
+          playAudioSequence(['swipe-instructions.mp3'], () => {
+            setGameState(2);
+          });
+          setHasPlayedSwipeInstructions(true);
+        } else {
+          setGameState(2);
+        }
       }
     });
   };
@@ -385,7 +458,29 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const handleDistrictSelection = (district: District) => {
-    if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject') return;
+    if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject' || !currentCall) return;
+
+    playAudioSequence(['swipe_sound.mp3']);
+
+    // Handle case where a vehicle is dispatched for a call that should be rejected
+    if (currentCall.correct_dispatch === 'reject') {
+        setGameState(0);
+        addScoreEvent('Incorrectly dispatched for a prank call', -50);
+        setGameStats(prev => ({
+            ...prev,
+            totalCalls: prev.totalCalls + 1,
+            incorrectDispatches: prev.incorrectDispatches + 1,
+            prankCallsHandled: prev.prankCallsHandled + 1,
+        }));
+
+        const audioToPlay = currentCall.wrong_resolution_audio;
+        if (audioToPlay) {
+            playAudioSequence([audioToPlay], startNextCall);
+        } else {
+            startNextCall();
+        }
+        return;
+    }
 
     setGameState(0); // STATE 0: no input during audio feedback
 
@@ -408,7 +503,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       }
 
       // Dispatch the vehicle
-      const callType = currentCall?.correct_dispatch === 'fire' ? 'fire' :
+      const callType = currentCall?.correct_dispatch === 'firetruck' ? 'firetruck' :
                       currentCall?.correct_dispatch === 'ambulance' ? 'ambulance' : 'police';
       dispatchVehicle(closestVehicle, district, callType);
 
@@ -460,15 +555,25 @@ const audioContextRef = useRef<AudioContext | null>(null);
         correctDispatches: isCorrectVehicle ? prev.correctDispatches + 1 : prev.correctDispatches,
         incorrectDispatches: !isCorrectVehicle ? prev.incorrectDispatches + 1 : prev.incorrectDispatches,
         policeCallsHandled: currentCall?.correct_dispatch === 'police' ? prev.policeCallsHandled + 1 : prev.policeCallsHandled,
-        fireCallsHandled: currentCall?.correct_dispatch === 'fire' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
+        fireCallsHandled: currentCall?.correct_dispatch === 'firetruck' ? prev.fireCallsHandled + 1 : prev.fireCallsHandled,
         ambulanceCallsHandled: currentCall?.correct_dispatch === 'ambulance' ? prev.ambulanceCallsHandled + 1 : prev.ambulanceCallsHandled,
       }));
       
       // Play dispatch confirmation audio then start next call
-      const districtAudio = `${district.toLowerCase()}_district.wav`;
-      playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
-          startNextCall();
-      });
+      const isCorrectDispatch = (isCorrectVehicle || isAnyVehicle) && isCorrectDistrict;
+      const audioToPlay = isCorrectDispatch ? currentCall?.correct_resolution_audio : currentCall?.wrong_resolution_audio;
+
+      if (audioToPlay) {
+          playAudioSequence([audioToPlay], () => {
+              startNextCall();
+          });
+      } else {
+          // Fallback to old audio
+          const districtAudio = `${district.toLowerCase()}_district.wav`;
+          playAudioSequence([`${selectedVehicle}.wav`, 'dispatched_to.wav', districtAudio], () => {
+              startNextCall();
+          });
+      }
     } else {
       // No vehicle available - play appropriate audio and return to vehicle selection
       const vehicleType = selectedVehicle === 'firetruck' ? 'fire' :
@@ -706,7 +811,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
       <h1 style={{
         fontSize: '3rem',
         marginBottom: '1rem',
-        color: '#FFD700'
+        color: '#FFFFFF'
       }}>
         SHIFT COMPLETE
       </h1>
@@ -715,7 +820,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
         fontSize: '2.5rem',
         fontWeight: 'bold',
         marginBottom: '2rem',
-        color: score >= 0 ? '#00FF00' : '#FF4444'
+        color: '#FFFFFF'
       }}>
         Final Score: {score}
       </div>
@@ -727,56 +832,27 @@ const audioContextRef = useRef<AudioContext | null>(null);
         width: '100%',
         marginBottom: '2rem'
       }}>
-        {/* Performance Summary */}
-        <div style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-          padding: '20px',
-          borderRadius: '10px',
-          border: '2px solid #FFD700'
-        }}>
-          <h3 style={{
-            fontSize: '1.5rem',
-            marginBottom: '15px',
-            color: '#FFD700'
-          }}>
-            PERFORMANCE
-          </h3>
-          <div style={{ fontSize: '1.2rem', marginBottom: '10px' }}>
-            Accuracy: <span style={{ color: '#00FF00' }}>{calculateAccuracy()}%</span>
-          </div>
-          <div style={{
-            fontSize: '1.4rem',
-            fontWeight: 'bold',
-            color: getPerformanceRating() === 'EXCELLENT' ? '#00FF00' :
-                   getPerformanceRating() === 'GOOD' ? '#90EE90' :
-                   getPerformanceRating() === 'FAIR' ? '#FFFF00' :
-                   getPerformanceRating() === 'NEEDS IMPROVEMENT' ? '#FFA500' : '#FF4444'
-          }}>
-            {getPerformanceRating()}
-          </div>
-        </div>
-
         {/* Call Statistics */}
         <div style={{
           backgroundColor: 'rgba(255, 255, 255, 0.1)',
           padding: '20px',
           borderRadius: '10px',
-          border: '2px solid #4169E1'
+          border: '2px solid #FFFFFF'
         }}>
           <h3 style={{
             fontSize: '1.5rem',
             marginBottom: '15px',
-            color: '#4169E1'
+            color: '#FFFFFF'
           }}>
             CALL STATISTICS
           </h3>
           <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
             <div>Total Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.totalCalls}</span></div>
-            <div>Correct Dispatches: <span style={{ color: '#00FF00' }}>{gameStats.correctDispatches}</span></div>
-            <div>Incorrect Dispatches: <span style={{ color: '#FF4444' }}>{gameStats.incorrectDispatches}</span></div>
-            <div>Calls Rejected: <span style={{ color: '#FFFF00' }}>{gameStats.callsRejected}</span></div>
-            <div>Correct Rejections: <span style={{ color: '#00FF00' }}>{gameStats.correctRejections}</span></div>
-            <div>Incorrect Rejections: <span style={{ color: '#FF4444' }}>{gameStats.incorrectRejections}</span></div>
+            <div>Correct Dispatches: <span style={{ color: '#FFFFFF' }}>{gameStats.correctDispatches}</span></div>
+            <div>Incorrect Dispatches: <span style={{ color: '#FFFFFF' }}>{gameStats.incorrectDispatches}</span></div>
+            <div>Calls Rejected: <span style={{ color: '#FFFFFF' }}>{gameStats.callsRejected}</span></div>
+            <div>Correct Rejections: <span style={{ color: '#FFFFFF' }}>{gameStats.correctRejections}</span></div>
+            <div>Incorrect Rejections: <span style={{ color: '#FFFFFF' }}>{gameStats.incorrectRejections}</span></div>
           </div>
         </div>
 
@@ -785,20 +861,20 @@ const audioContextRef = useRef<AudioContext | null>(null);
           backgroundColor: 'rgba(255, 255, 255, 0.1)',
           padding: '20px',
           borderRadius: '10px',
-          border: '2px solid #32CD32'
+          border: '2px solid #FFFFFF'
         }}>
           <h3 style={{
             fontSize: '1.5rem',
             marginBottom: '15px',
-            color: '#32CD32'
+            color: '#FFFFFF'
           }}>
             CALL TYPES
           </h3>
           <div style={{ fontSize: '1rem', lineHeight: '1.5' }}>
-            <div>Police Calls: <span style={{ color: '#4169E1' }}>{gameStats.policeCallsHandled}</span></div>
-            <div>Fire Calls: <span style={{ color: '#FF4444' }}>{gameStats.fireCallsHandled}</span></div>
+            <div>Police Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.policeCallsHandled}</span></div>
+            <div>Fire Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.fireCallsHandled}</span></div>
             <div>Medical Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.ambulanceCallsHandled}</span></div>
-            <div>Prank Calls: <span style={{ color: '#808080' }}>{gameStats.prankCallsHandled}</span></div>
+            <div>Prank Calls: <span style={{ color: '#FFFFFF' }}>{gameStats.prankCallsHandled}</span></div>
           </div>
         </div>
       </div>
@@ -806,7 +882,8 @@ const audioContextRef = useRef<AudioContext | null>(null);
       <div style={{
         fontSize: '1.2rem',
         opacity: 0.8,
-        marginTop: '1rem'
+        marginTop: '1rem',
+        color: '#FFFFFF'
       }}>
         Click anywhere to start a new shift
       </div>
@@ -832,7 +909,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
         touchAction: 'none'
       }}
     >
-      {gameStarted && (
+      {debugMode && gameStarted && (
         <button
           onClick={handleSkipAudio}
           style={{
@@ -848,6 +925,24 @@ const audioContextRef = useRef<AudioContext | null>(null);
           }}
         >
           Skip Audio
+        </button>
+      )}
+      {debugMode && gameStarted && (
+        <button
+          onClick={endGame}
+          style={{
+            position: 'absolute',
+            bottom: '60px',
+            right: '20px',
+            zIndex: 1001,
+            padding: '10px',
+            backgroundColor: 'rgba(255, 0, 0, 0.5)',
+            border: '1px solid white',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          Finish Game
         </button>
       )}
       <button
@@ -1052,4 +1147,5 @@ const audioContextRef = useRef<AudioContext | null>(null);
     </main>
   );
 }
+
 

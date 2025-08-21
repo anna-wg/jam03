@@ -1,8 +1,3 @@
-audio_file_name,correct_dispatch,district_location
-police-call-1.mp3,police,North
-police-call-2.mp3,police,South
-fire-call-1.mp3,firetruck,East
-ems-call-1.mp3,ambulance,West
-ems-call-2.mp3,ambulance,North
-prank-call-1.mp3,reject,South
-prank-call-2.mp3,reject,East
+audio_file_name,correct_dispatch,district_location,wrong_resolution_audio,correct_resolution_audio
+Call_Firefighters02.mp3,firetruck,North,Call_Firefighters02_Wrong.wav,Call_Firefighters02_Success.wav
+Call_Police01.m4a,police,South,Call_Police01_Wrong.wav,Call_Police01_Success.wav

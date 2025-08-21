@@ -6,7 +6,6 @@ import { repoName } from './lib/repoName.js'
 const nextConfig = {
   basePath: `/${repoName}`,
   assetPrefix: `/${repoName}/`,
-  output: 'export',
   images: {
     unoptimized: true, // Required for static export
   },
