@@ -349,7 +349,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setSelectedVehicle(vehicle);
     setGameState(0); // STATE 0: no input during audio feedback
     
-    playAudioSequence([`${vehicle}-selected.wav`], () => {
+    playAudioSequence(['click_sound.mp3', `${vehicle}-selected.wav`], () => {
       if (vehicle === 'reject') {
         // Update statistics for rejection
         setGameStats(prev => ({
@@ -422,6 +422,8 @@ const audioContextRef = useRef<AudioContext | null>(null);
 
   const handleDistrictSelection = (district: District) => {
     if (gameState !== 2 || !selectedVehicle || selectedVehicle === 'reject' || !currentCall) return;
+
+    playAudioSequence(['swipe_sound.mp3']);
 
     // Handle case where a vehicle is dispatched for a call that should be rejected
     if (currentCall.correct_dispatch === 'reject') {
