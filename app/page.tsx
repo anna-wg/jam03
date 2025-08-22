@@ -93,6 +93,7 @@ interface ScoreEvent {
 export default function BlindDispatch() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [allCalls, setAllCalls] = useState<CallScenario[]>([]);
+  const [currentCallIndex, setCurrentCallIndex] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [gameState, setGameState] = useState<GameState>(0);
@@ -101,7 +102,7 @@ export default function BlindDispatch() {
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [currentCall, setCurrentCall] = useState<CallScenario | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<SelectableVehicleType | null>(null);
-  const [debugMode, setDebugMode] = useState(true);
+  const [debugMode, setDebugMode] = useState(false);
   const [hasPlayedSwipeInstructions, setHasPlayedSwipeInstructions] = useState(false);
   const [hasPlayedCornersInstructions, setHasPlayedCornersInstructions] = useState(false);
   const [gameStats, setGameStats] = useState<GameStats>({
@@ -269,6 +270,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
     setScore(0);
     setScoreEvents([]);
     setTimeLeft(300);
+    setCurrentCallIndex(0); // Reset call index to start from the beginning
     
     // Reset game statistics
     setGameStats({
@@ -302,13 +304,16 @@ const audioContextRef = useRef<AudioContext | null>(null);
   };
 
   const startNextCall = () => {
-    const availableCalls = allCalls.filter(call => call.audio_file_name !== currentCall?.audio_file_name);
-    if (availableCalls.length === 0) {
+    // Check if we've reached the end of the call list
+    if (currentCallIndex >= allCalls.length) {
       endGame();
       return;
     }
-    const nextCall = availableCalls[Math.floor(Math.random() * availableCalls.length)];
+    
+    // Get the next call in sequence
+    const nextCall = allCalls[currentCallIndex];
     setCurrentCall(nextCall);
+    setCurrentCallIndex(prevIndex => prevIndex + 1);
     setSelectedVehicle(null);
     setGameState(0); // STATE 0: no input during call audio
     
@@ -1133,6 +1138,7 @@ const audioContextRef = useRef<AudioContext | null>(null);
             {gameStarted && (
               <div style={{ marginTop: '15px', paddingTop: '10px', borderTop: '1px solid #333' }}>
                 <div><strong>Current Call:</strong></div>
+                <div>Call Index: {currentCallIndex} / {allCalls.length}</div>
                 <div>Type: {currentCall?.correct_dispatch || 'None'}</div>
                 <div>District: {currentCall?.district_location || 'None'}</div>
                 <div>Selected: {selectedVehicle || 'None'}</div>
